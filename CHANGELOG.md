@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.4 — 2026-09-30
+
+性能优化第三轮(轮 7-8,累计八轮)。对比报告已更新:`note/report/perf/2026-09-29-perf-optimization.md`。
+
+### 性能(两轮,每轮独立优化面)
+- **SQLite 连接级读取调优**:`mmap_size`/`temp_store=MEMORY`/`cache_size` 三项连接级 PRAGMA(不写库文件),整体 try/catch 兜底。large(100k 行)queryTurn 174.5→50.6ms(×3.45)、query ×2.5。
+- **免排序聚合取最新行**:`latestTurnId`/`fallbackSessionId` 改用 MAX() 裸列惯用法,免去 `ORDER BY ... LIMIT 1` 的临时 B-tree 排序;同轮评估并否决更慢的窗口函数合并方案。
+- 复合效果:large 上 CLI `--turn --current` 端到端 237→130ms(×1.82)、stop 钩子 ×1.85、queryTurn ×3.5。
+
+### 测试与基准
+- bench-token-rate 新增只读证明断言:基准全程跑完后夹具库文件 SHA-256 不变 + 无 `-wal`/`-shm` 旁文件(每次跑基准自动重新验证零写入)。
+
 ## 0.9.3 — 2026-09-29
 
 性能优化第二轮(行为零变化)。对比报告已更新至全部六轮:`note/report/perf/2026-09-29-perf-optimization.md`。
