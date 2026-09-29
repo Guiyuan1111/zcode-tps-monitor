@@ -65,10 +65,12 @@ function openDb() {
 function fallbackSessionId(db) {
   const st = readState();
   if (st && st.sessionId) return st.sessionId;
+  // MAX() 裸列惯用法:SQLite 保证仅用单个 min/max 聚合时,裸列取自聚合命中行,
+  // 免去 ORDER BY 的临时 B-tree 排序;空集时返回一行 null,与 LIMIT 1 未命中同义
   const row = db
-    .prepare("SELECT session_id FROM model_usage WHERE status = 'completed' ORDER BY completed_at DESC LIMIT 1")
+    .prepare("SELECT session_id, MAX(completed_at) FROM model_usage WHERE status = 'completed'")
     .get();
-  return row ? row.session_id : null;
+  return row && row.session_id != null ? row.session_id : null;
 }
 
 function resolveSession(db, sessionId) {
@@ -170,10 +172,11 @@ function query(sessionId) {
 // 尚未发生,只能看到上一轮。
 function latestTurnId(db, sid) {
   try {
+    // 同 fallbackSessionId:MAX() 裸列免排序,语义 = 按 completed_at 降序取第一条的 turn_id
     const row = db
-      .prepare("SELECT turn_id FROM model_usage WHERE session_id = ? AND turn_id IS NOT NULL ORDER BY completed_at DESC LIMIT 1")
+      .prepare("SELECT turn_id, MAX(completed_at) FROM model_usage WHERE session_id = ? AND turn_id IS NOT NULL")
       .get(sid);
-    return row ? row.turn_id : null;
+    return row && row.turn_id != null ? row.turn_id : null;
   } catch {
     return null; // 旧版客户端的库没有 turn_id 列
   }
