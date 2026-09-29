@@ -57,7 +57,7 @@ node scripts/collect.mjs --watch 5  # 采样 5 秒
 node --test
 
 # 性能基准(仓库根目录 benchmark/;夹具与真实 usage 库同构,
-# 内建"优化前冻结副本 vs 当前代码"的行为等价断言)
+# 内建"优化前冻结副本 vs 当前代码"的行为等价断言与只读哈希证明)
 node benchmark/run-all.mjs
 ```
 

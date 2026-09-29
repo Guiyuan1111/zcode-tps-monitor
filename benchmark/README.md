@@ -8,7 +8,7 @@
 benchmark/
 ├── baseline-v0.9.0/     # 优化前(v0.9.0)的冻结代码副本——仅供对比,禁止修改
 ├── fixture-gen.mjs      # 生成模拟 ZCode usage 库的夹具(固定种子,可复现)
-├── bench-token-rate.mjs # 基准1:token-rate 查询层(进程内)
+├── bench-token-rate.mjs # 基准1:token-rate 查询层(进程内;含只读哈希断言)
 ├── bench-cli.mjs        # 基准2:收尾自测 CLI 端到端(含进程启动)
 ├── bench-hooks.mjs      # 基准3:钩子进程端到端(prompt-submit/session-start/stop)
 ├── bench-snapshot.mjs   # 基准4:采集层 snapshot()(demo 模式,CPU 采样开销)
@@ -32,7 +32,7 @@ BENCH_ITERS=500 node benchmark/bench-token-rate.mjs
 
 - **夹具**:固定种子的伪随机生成 3 个会话 ×(small 2k / medium 20k / large 100k)行 `model_usage`,85% main_turn,每 3 行一个 turn_id;`sess_cur` 末尾有贴近"现在"的最新一轮,配套 `state.json`(ts=now-60s)使 `--current` 守卫路径可测。两个变体使用同一夹具文件。
 - **对比对象**:`benchmark/baseline-v0.9.0/`(优化前冻结副本)vs `plugins/zcode-tps-monitor/`(当前代码)。子进程类基准交错执行(A B B A)消除系统热漂移,取中位数。
-- **红线内建校验**:每个基准在测速前先做行为等价断言(返回值深度相等 / stdout 逐字节相等 / MCP 三应答逐字节一致 / watch 输出逐字段全等)。**等价性不通过时基准直接失败**,确保优化不改变行为(兼容性红线)。
+- **红线内建校验**:每个基准在测速前先做行为等价断言(返回值深度相等 / stdout 逐字节相等 / MCP 三应答逐字节一致 / watch 输出逐字段全等);基准 1 另有只读证明——全程跑完后夹具库文件 SHA-256 哈希不变且目录内无 `-wal`/`-shm` 旁文件(连接级 PRAGMA 等一切改动均不得写入)。**等价性/只读性不通过时基准直接失败**,确保优化不改变行为且零写入(安全与兼容性红线)。
 - **输出**:每台基准机打印一行 `##RESULT## {json}`,`run-all.mjs` 汇总为 Markdown 并落盘 `TEMP/results.json`,对比报告见 `note/report/perf/`。
 
 ## 已知边界

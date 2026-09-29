@@ -147,7 +147,7 @@ node benchmark/run-all.mjs                   # 全量性能基准(优化前冻�
 BENCH_SIZE=large node benchmark/run-all.mjs  # 100k 行大夹具
 ```
 
-- 性能基准的方法论与前后对比见 [`benchmark/README.md`](benchmark/README.md) 与 [`note/report/perf/`](note/report/perf/) 的对比报告;基准内建行为等价断言,优化不得改变任何输出。
+- 性能基准的方法论与前后对比见 [`benchmark/README.md`](benchmark/README.md) 与 [`note/report/perf/`](note/report/perf/) 的对比报告;基准内建双重红线断言——行为等价(输出深度相等/逐字节一致,优化不得改变任何输出)与只读证明(全程跑完后库文件 SHA-256 不变、无 WAL 旁文件)。
 - 每个版本的改动要点归档在 [`note/release/`](note/release/),笔记索引见 [`note/README.md`](note/README.md)。
 
 ## License
