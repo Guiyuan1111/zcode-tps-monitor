@@ -54,23 +54,23 @@ function deepFind(obj, keys, depth = 0) {
 export async function fetchRemoteMetrics(url, timeoutMs = 5000) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
-  let res;
   try {
-    res = await fetch(url, { signal: ac.signal, headers: { Accept: "application/json" } });
+    const res = await fetch(url, { signal: ac.signal, headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // 超时计时覆盖到 body 读完:发完头就挂住的慢响应体同样被中止,不会悬挂调用方
+    const data = await res.json();
+    const tps = deepFind(data, TPS_KEYS);
+    if (tps === undefined) throw new Error("响应中未找到 tps/qps 字段");
+    return {
+      tps: Math.round(tps),
+      p50: deepFind(data, LAT_KEYS.p50) ?? null,
+      p95: deepFind(data, LAT_KEYS.p95) ?? null,
+      p99: deepFind(data, LAT_KEYS.p99) ?? null,
+      errorRate: deepFind(data, ERR_KEYS) ?? null,
+    };
   } finally {
     clearTimeout(timer);
   }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  const tps = deepFind(data, TPS_KEYS);
-  if (tps === undefined) throw new Error("响应中未找到 tps/qps 字段");
-  return {
-    tps: Math.round(tps),
-    p50: deepFind(data, LAT_KEYS.p50) ?? null,
-    p95: deepFind(data, LAT_KEYS.p95) ?? null,
-    p99: deepFind(data, LAT_KEYS.p99) ?? null,
-    errorRate: deepFind(data, ERR_KEYS) ?? null,
-  };
 }
 
 // ---------- 本机系统资源(Windows 下 loadavg 恒为 0,用 CPU 时间差采样) ----------
@@ -113,20 +113,19 @@ async function systemMetrics() {
 
 export async function snapshot(env = process.env) {
   const url = resolveUrl(env);
-  let m, mode;
-  if (url) {
-    try {
-      m = await fetchRemoteMetrics(url);
-      mode = "remote";
-    } catch (err) {
-      m = demoStep();
-      mode = `demo(接口不可用: ${err.message},已回退演示数据)`;
+  // 远程指标与本机 CPU 采样并行:总延迟取两者较大值而非求和(CPU 采样本身 250ms)
+  const metricsJob = (async () => {
+    if (url) {
+      try {
+        return { m: await fetchRemoteMetrics(url), mode: "remote" };
+      } catch (err) {
+        return { m: demoStep(), mode: `demo(接口不可用: ${err.message},已回退演示数据)` };
+      }
     }
-  } else {
-    m = demoStep();
-    mode = "demo";
-  }
-  return { time: new Date().toISOString(), mode, ...m, system: await systemMetrics() };
+    return { m: demoStep(), mode: "demo" };
+  })();
+  const [{ m, mode }, system] = await Promise.all([metricsJob, systemMetrics()]);
+  return { time: new Date().toISOString(), mode, ...m, system };
 }
 
 export async function watch(seconds, env = process.env) {

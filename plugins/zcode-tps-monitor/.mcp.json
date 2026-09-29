@@ -10,7 +10,7 @@
         "TPS_URL": "${user_config.metrics_url}"
       },
       "enabled": true,
-      "timeoutMs": 30000
+      "timeoutMs": 60000
     }
   }
 }
