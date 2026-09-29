@@ -75,6 +75,12 @@ export async function fetchRemoteMetrics(url, timeoutMs = 5000) {
 
 // ---------- 本机系统资源(Windows 下 loadavg 恒为 0,用 CPU 时间差采样) ----------
 
+// 进程内静态值缓存:核数/总内存/平台在进程生命周期内不会变化,
+// 而 os.cpus()/os.totalmem() 在 Windows 上是相对昂贵的系统查询
+const CPU_COUNT = os.cpus().length;
+const TOTAL_MEM_MB = os.totalmem() / 1048576;
+const PLATFORM = `${os.platform()}/${os.arch()}`;
+
 function cpuTimes() {
   let idle = 0, total = 0;
   for (const c of os.cpus()) {
@@ -84,28 +90,50 @@ function cpuTimes() {
   return { idle, total };
 }
 
-export async function sampleCpuPercent(intervalMs = 250) {
+function sampleOnce(intervalMs) {
   const a = cpuTimes();
-  await new Promise((r) => setTimeout(r, intervalMs));
-  const b = cpuTimes();
-  const dIdle = b.idle - a.idle, dTotal = b.total - a.total;
-  if (dTotal <= 0) return null;
-  return r1(clamp((1 - dIdle / dTotal) * 100, 0, 100));
+  return new Promise((r) => setTimeout(r, intervalMs)).then(() => {
+    const b = cpuTimes();
+    const dIdle = b.idle - a.idle, dTotal = b.total - a.total;
+    return dTotal <= 0 ? null : r1(clamp((1 - dIdle / dTotal) * 100, 0, 100));
+  });
+}
+
+// CPU% 进程内短缓存(默认 1s):长驻进程(MCP server)里连续快照不再每次阻塞
+// 一个完整的采样窗口;并发调用共享同一次在途采样。CLI 单发进程行为不变
+// (首次调用永远真实采样)。监控语义上 ≤1s 陈旧的 CPU% 属于可接受精度。
+let cpuCache = { at: 0, val: undefined };
+let cpuInFlight = null;
+
+export async function sampleCpuPercent(intervalMs = 250, opts = {}) {
+  const maxAgeMs = opts.maxAgeMs ?? 1000;
+  if (maxAgeMs > 0 && cpuCache.val !== undefined && Date.now() - cpuCache.at <= maxAgeMs) {
+    return cpuCache.val;
+  }
+  if (!cpuInFlight) {
+    cpuInFlight = sampleOnce(intervalMs)
+      .then((val) => {
+        cpuCache = { at: Date.now(), val };
+        return val;
+      })
+      .finally(() => {
+        cpuInFlight = null;
+      });
+  }
+  return cpuInFlight;
 }
 
 async function systemMetrics() {
-  const cpus = os.cpus().length;
   const cpuPercent = await sampleCpuPercent();
-  const totalMB = os.totalmem() / 1048576;
   const freeMB = os.freemem() / 1048576;
   return {
     cpuPercent,
-    cpuCores: cpus,
-    memTotalMB: Math.round(totalMB),
-    memUsedMB: Math.round(totalMB - freeMB),
-    memPercent: r1(((totalMB - freeMB) / totalMB) * 100),
+    cpuCores: CPU_COUNT,
+    memTotalMB: Math.round(TOTAL_MEM_MB),
+    memUsedMB: Math.round(TOTAL_MEM_MB - freeMB),
+    memPercent: r1(((TOTAL_MEM_MB - freeMB) / TOTAL_MEM_MB) * 100),
     hostUptimeHours: r1(os.uptime() / 3600),
-    platform: `${os.platform()}/${os.arch()}`,
+    platform: PLATFORM,
   };
 }
 
