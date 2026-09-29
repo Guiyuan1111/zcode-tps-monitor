@@ -174,6 +174,32 @@ test("旧库无 turn_id 列:本轮查询优雅降级不抛错", async () => {
   }
 });
 
+test("无 main_turn 的会话回退全量 scope:本轮统计仍圈定最新 turn(含 sub 行)", async () => {
+  const fbFile = path.join(tmp, "fallback.sqlite");
+  const db = new DatabaseSync(fbFile);
+  db.exec(`CREATE TABLE model_usage (
+    session_id TEXT, status TEXT, query_source TEXT, model_id TEXT,
+    output_tokens INTEGER, reasoning_tokens INTEGER, input_tokens INTEGER, cache_read_input_tokens INTEGER,
+    first_token_at INTEGER, completed_at INTEGER, time_to_first_token_ms INTEGER, turn_id TEXT)`);
+  const T0 = Date.now() - 60000;
+  // 整个会话没有任何 main_turn → scope 应回退为全部请求
+  db.exec(`INSERT INTO model_usage VALUES ('s3','completed','sub','m',300,0,1000,900,${T0 + 1000},${T0 + 2000},500,'t_sub')`);
+  db.exec(`INSERT INTO model_usage VALUES ('s3','completed','sub','m',600,0,1000,900,${T0 + 3000},${T0 + 6000},500,'t_sub')`);
+  db.close();
+  process.env.ZCODE_USAGE_DB = fbFile;
+  try {
+    const fb = await import(pathToFileURL(path.join(PLUGIN, "scripts", "token-rate.mjs")).href + "?fallback");
+    const r = fb.queryTurn("s3");
+    assert.equal(r.turnId, "t_sub");
+    assert.equal(r.turn.requests, 2);
+    assert.equal(r.turn.tokPerSec, 225); // (300+600) tok / (1000+3000) ms
+    assert.equal(r.session.requests, 2); // 全量 scope 的 SUM
+    assert.equal(r.session.totalOutput, 900);
+  } finally {
+    process.env.ZCODE_USAGE_DB = dbFile;
+  }
+});
+
 // --- doctor:对夹具环境应全绿 ---
 test("doctor:夹具环境全部通过", async () => {
   fs.mkdirSync(path.join(tmp, ".zcode"), { recursive: true });

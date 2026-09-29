@@ -67,20 +67,24 @@ function resolveSession(db, sessionId) {
   return { sid, scoped: sessionId ? "explicit" : "auto" };
 }
 
-// 主对话优先的过滤范围:有 main_turn 数据时只统计 main_turn,否则回退为全部请求
-function scopeFor(db, sid) {
-  const base =
-    "SELECT model_id, output_tokens, reasoning_tokens, input_tokens, cache_read_input_tokens," +
-    " first_token_at, completed_at, time_to_first_token_ms, status" +
-    " FROM model_usage WHERE status = 'completed' AND query_source = 'main_turn'";
+// 主对话优先的过滤范围:先按 main_turn 取窗口,一条都没有时回退为全部请求。
+// (等价于旧版"先做 LIMIT 1 存在性探测、再查询",但常规路径少一次全表扫描:
+// main_turn 窗口为空 ⟺ 范围内没有任何 main_turn 行,判定条件不变)
+const SCOPE_COLS =
+  "SELECT model_id, output_tokens, reasoning_tokens, input_tokens, cache_read_input_tokens," +
+  " first_token_at, completed_at, time_to_first_token_ms, status" +
+  " FROM model_usage WHERE status = 'completed'";
+const MAIN_AND = " AND query_source = 'main_turn'";
+
+// 返回窗口行与 scopeSql(供 SUM 复用);main 标记当前 scope 是否只含主对话
+function scopeRows(db, sid, limit) {
+  const sidAnd = sid ? " AND session_id = ?" : "";
   const args = sid ? [sid] : [];
-  const hasMain = db
-    .prepare(base + (sid ? " AND session_id = ?" : "") + " LIMIT 1")
-    .get(...args);
-  const scopeSql = hasMain
-    ? base + " AND session_id = ?"
-    : base.replace(" AND query_source = 'main_turn'", "") + (sid ? " AND session_id = ?" : "");
-  return { scopeSql, args };
+  const mainSql = SCOPE_COLS + MAIN_AND + sidAnd;
+  const rows = db.prepare(mainSql + " ORDER BY completed_at DESC LIMIT ?").all(...args, limit);
+  if (rows.length) return { rows, scopeSql: mainSql, args, main: true };
+  const allSql = SCOPE_COLS + sidAnd;
+  return { rows: db.prepare(allSql + " ORDER BY completed_at DESC LIMIT ?").all(...args, limit), scopeSql: allSql, args, main: false };
 }
 
 function toItem(r) {
@@ -114,12 +118,18 @@ function sessionAggregate(db, scopeSql, args, rated) {
       " SUM(input_tokens) i, SUM(cache_read_input_tokens) c FROM (" + scopeSql + ")"
     )
     .get(...args);
+  let max = -Infinity, min = Infinity, sum = 0;
+  for (const i of rated) {
+    if (i.tokPerSec > max) max = i.tokPerSec;
+    if (i.tokPerSec < min) min = i.tokPerSec;
+    sum += i.tokPerSec;
+  }
   return {
     samples: rated.length,
     requests: sumRow.n ?? 0,
-    avg: Math.round((rated.reduce((s, i) => s + i.tokPerSec, 0) / rated.length) * 10) / 10,
-    max: Math.max(...rated.map((i) => i.tokPerSec)),
-    min: Math.min(...rated.map((i) => i.tokPerSec)),
+    avg: Math.round((sum / rated.length) * 10) / 10,
+    max,
+    min,
     totalOutput: sumRow.o ?? 0,
     totalReasoning: sumRow.r ?? 0,
     totalInput: sumRow.i ?? 0,
@@ -131,10 +141,10 @@ function query(sessionId) {
   const db = openDb();
   try {
     const { sid, scoped } = resolveSession(db, sessionId);
-    const { scopeSql, args } = scopeFor(db, sid);
-    // 曲线历史(大窗口)与统计(小窗口)分别查询,刷新/重开不丢
-    const histRows = db.prepare(scopeSql + " ORDER BY completed_at DESC LIMIT ?").all(...args, HIST);
-    const items = histRows.slice(0, N).map(toItem);
+    // 窗口瘦身:history/统计实际只消费前 min(N, HIST) 条(与旧版取 HIST 条再
+    // slice(0,N) 的结果集逐条一致),按需拉取即可,免去多余行的物化
+    const { rows, scopeSql, args } = scopeRows(db, sid, Math.min(N, HIST));
+    const items = rows.map(toItem);
     const rated = items.filter((i) => i.tokPerSec != null);
     // 展示用 latest 优先取最近一条"有效"记录,避免在途/缺字段行顶掉头条
     const latest = rated[0] ?? items[0] ?? null;
@@ -172,31 +182,53 @@ function queryTurn(sessionId, opts = {}) {
   try {
     const sid = sessionId || fallbackSessionId(db);
     if (!sid) return { sessionId: null, turnId: null, turn: null, session: null };
-    const { scopeSql, args } = scopeFor(db, sid);
-    const winRows = db.prepare(scopeSql + " ORDER BY completed_at DESC LIMIT ?").all(...args, N);
-    const session = sessionAggregate(db, scopeSql, args, winRows.map(toItem).filter((i) => i.tokPerSec != null));
     const turnId = latestTurnId(db, sid);
-    if (!turnId) return { sessionId: sid, turnId: null, turn: null, session };
-    let turnRows;
-    try {
-      turnRows = db.prepare(scopeSql + " AND turn_id = ? ORDER BY completed_at ASC").all(...args, turnId);
-    } catch {
-      return { sessionId: sid, turnId: null, turn: null, session };
+    // scope 由"不带 turn 过滤"的窗口一次判定(乐观 main_turn,空则回退)。
+    // turn 行改走 (session_id, turn_id) 索引直达:真实 usage 库建有
+    // model_usage_session_turn_idx,查询计划从"低选择性的 query_source 索引扫描 +
+    // 临时 B-tree 排序"变为索引定位;status/query_source 的 scope 过滤移到 JS 完成,
+    // 行集与 SQL 过滤严格等价(无索引的库自动退化为全表扫描,结果不变)
+    const scope = scopeRows(db, sid, N);
+    let turnRows = null;
+    if (turnId) {
+      try {
+        turnRows = db
+          .prepare(
+            "SELECT model_id, output_tokens, reasoning_tokens, input_tokens, cache_read_input_tokens," +
+              " first_token_at, completed_at, time_to_first_token_ms, status, query_source" +
+              " FROM model_usage WHERE session_id = ? AND turn_id = ? ORDER BY completed_at ASC"
+          )
+          .all(sid, turnId)
+          .filter((r) => r.status === "completed" && (!scope.main || r.query_source === "main_turn"));
+      } catch {
+        turnRows = null; // 旧版客户端的库没有 turn_id 列
+      }
     }
-    if (!turnRows.length) return { sessionId: sid, turnId, turn: null, session };
+    const session = sessionAggregate(db, scope.scopeSql, scope.args, scope.rows.map(toItem).filter((i) => i.tokPerSec != null));
+    if (!turnId) return { sessionId: sid, turnId: null, turn: null, session };
+    if (!turnRows || !turnRows.length) return { sessionId: sid, turnId, turn: null, session };
     // --current 守卫:最新 turn 的行全部早于本次提问时刻 → 本问还没有任何模型请求
     // (典型场景:纯问答轮在回答结束前),绝不把上一轮数据冒充"本问"返回。
     if (opts.current) {
       const ts = lastPromptTs();
-      const lastAt = Math.max(...turnRows.map((r) => r.completed_at ?? 0));
+      let lastAt = -Infinity;
+      for (const r of turnRows) if ((r.completed_at ?? 0) > lastAt) lastAt = r.completed_at ?? 0;
       if (ts && lastAt < ts) {
         return { sessionId: sid, turnId, turn: null, noCurrentTurnData: true, session };
       }
     }
     const items = turnRows.map(toItem);
     const rated = items.filter((i) => i.tokPerSec != null);
-    const totalTok = rated.reduce((s, i) => s + i.outputTokens + i.reasoningTokens, 0);
-    const genMs = rated.reduce((s, i) => s + i.genMs, 0);
+    let totalTok = 0, genMs = 0, totalOut = 0, totalRea = 0, peak = null;
+    for (const i of rated) {
+      totalTok += i.outputTokens + i.reasoningTokens;
+      genMs += i.genMs;
+      if (i.tokPerSec != null && (peak === null || i.tokPerSec > peak)) peak = i.tokPerSec;
+    }
+    for (const i of items) {
+      totalOut += i.outputTokens;
+      totalRea += i.reasoningTokens;
+    }
     const turn = {
       requests: items.length,
       rated: rated.length,
@@ -204,11 +236,11 @@ function queryTurn(sessionId, opts = {}) {
       firstAt: items[0].completedAt,
       lastAt: items[items.length - 1].completedAt,
       genMs,
-      totalOutput: items.reduce((s, i) => s + i.outputTokens, 0),
-      totalReasoning: items.reduce((s, i) => s + i.reasoningTokens, 0),
+      totalOutput: totalOut,
+      totalReasoning: totalRea,
       // 本轮即时速率:总产出 / 总纯生成时长(按段加权,排除段间工具等待),单段时即该段速率
       tokPerSec: genMs >= MIN_GEN_MS && totalTok > 0 ? Math.round((totalTok / genMs) * 10000) / 10 : null,
-      peak: rated.length ? Math.max(...rated.map((i) => i.tokPerSec)) : null,
+      peak,
     };
     return { sessionId: sid, turnId, turn, session };
   } finally {
@@ -224,15 +256,24 @@ function fmtCompact(n) {
   return String(n);
 }
 
-// 千分位精确数字(每轮输出与 CLI 明细):2,762
+// 千分位精确数字(每轮输出与 CLI 明细):2,762。
+// 缓存格式化器实例:toLocaleString 每次调用都要新建 Intl 对象,进程内重复
+// 格式化(库调用方/批处理)时开销可观;输出与 toLocaleString("en-US") 逐字节一致
+let _numFmt = null;
 function fmtNum(n) {
-  return n.toLocaleString("en-US");
+  return (_numFmt ??= new Intl.NumberFormat("en-US")).format(n);
+}
+
+// 时:分:秒(与 new Date(x).toLocaleTimeString("zh-CN",{hour12:false}) 逐字节一致)
+let _timeFmt = null;
+function fmtTime(ms) {
+  return (_timeFmt ??= new Intl.DateTimeFormat("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })).format(new Date(ms));
 }
 
 function formatLine(r) {
   const l = r.latest;
   if (!l) return "暂无已完成的模型请求";
-  const t = new Date(l.completedAt).toLocaleTimeString("zh-CN", { hour12: false });
+  const t = fmtTime(l.completedAt);
   const parts = [
     // 采样发生在发送消息的瞬间,头条描述的是上一条已完成回复
     `⚡ ${l.tokPerSec ?? "-"} tok/s(上轮)`,
@@ -251,7 +292,7 @@ function formatLine(r) {
 function formatTurnLine(r) {
   const t = r.turn;
   if (!t) return "暂无本轮请求记录";
-  const time = new Date(t.lastAt).toLocaleTimeString("zh-CN", { hour12: false });
+  const time = fmtTime(t.lastAt);
   const parts = [
     // 采样发生在回复刚结束的瞬间,头条即本轮即时速率
     `⚡ ${t.tokPerSec ?? "-"} tok/s(本轮)`,
