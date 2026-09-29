@@ -17,12 +17,13 @@ note/
 | 0.9.0 | [0.9.0.md](release/0.9.0.md) | 聚焦「回复末尾的本问速率行」,移除大屏,落实分析报告高优先级优化 |
 | 0.9.1 | [0.9.1.md](release/0.9.1.md) | 性能优化四轮(查询/采集/MCP/钩子),行为零变化,新增 benchmark 基准设施 |
 | 0.9.2 | [0.9.2.md](release/0.9.2.md) | 文档对齐:清除大屏口径残留,补性能基准/报告的开发入口文档 |
+| 0.9.3 | [0.9.3.md](release/0.9.3.md) | 性能优化第二轮(轮5-6:MCP 序列化/watch 节拍),累计六轮,新增 bench-watch 与 collect 单测 |
 
 ## report/perf/
 
 | 报告 | 内容 |
 |---|---|
-| [2026-09-29-perf-optimization.md](report/perf/2026-09-29-perf-optimization.md) | v0.9.0→0.9.1 四轮性能优化:方法论、逐语句剖析、前后对比表、红线核验 |
+| [2026-09-29-perf-optimization.md](report/perf/2026-09-29-perf-optimization.md) | v0.9.0→0.9.3 六轮性能优化:方法论、逐语句剖析、前后对比表、红线核验 |
 
 ## 相关目录(仓库根)
 

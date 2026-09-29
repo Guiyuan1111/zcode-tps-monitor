@@ -4,7 +4,7 @@
 //
 //   node benchmark/run-all.mjs                 # 默认 medium
 //   BENCH_SIZE=large node benchmark/run-all.mjs
-//   BENCH_SKIP=mcp node benchmark/run-all.mjs  # 跳过指定项(逗号分隔:token-rate,cli,snapshot,mcp,hooks)
+//   BENCH_SKIP=mcp node benchmark/run-all.mjs  # 跳过指定项(逗号分隔:token-rate,cli,hooks,snapshot,mcp,watch)
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -31,6 +31,7 @@ const benches = [
   { name: "hooks", script: "bench-hooks.mjs", args: [size] },
   { name: "snapshot", script: "bench-snapshot.mjs", args: [] },
   { name: "mcp", script: "bench-mcp.mjs", args: [] },
+  { name: "watch", script: "bench-watch.mjs", args: [] },
 ];
 
 const results = {};

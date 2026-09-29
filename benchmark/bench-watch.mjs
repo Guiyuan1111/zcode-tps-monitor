@@ -71,7 +71,7 @@ async function timeWatch(variant, tpsUrl) {
   return { ms: Date.now() - t0, w };
 }
 
-const result = { bench: "watch", seconds: SECONDS, rounds: ROUNDS, scenarios: {} };
+const result = { bench: "watch", seconds: SECONDS, rounds: ROUNDS, baseline: {}, current: {}, speedup: {} };
 
 // --- fast / slow:固定 JSON,输出全等校验 ---
 for (const [name, delay] of [["fast", 50], ["slow", 600]]) {
@@ -88,8 +88,9 @@ for (const [name, delay] of [["fast", 50], ["slow", 600]]) {
     }
     assert.deepEqual(stripTime(cw), stripTime(bw), `${name}: watch 输出不一致`);
     const pick = (a) => Math.min(...a);
-    const base = pick(b), cur = pick(c);
-    result.scenarios[name] = { baseline_ms: base, current_ms: cur, speedup: +(base / cur).toFixed(2) };
+    result.baseline[name] = pick(b);
+    result.current[name] = pick(c);
+    result.speedup[name] = +(result.baseline[name] / result.current[name]).toFixed(2);
   } finally {
     srv.close();
   }
@@ -102,14 +103,12 @@ for (const [name, delay] of [["fast", 50], ["slow", 600]]) {
   const rb = await timeWatch(baseline, tpsUrl);
   const rc = await timeWatch(current, tpsUrl);
   assert.deepEqual(structure(rc.w), structure(rb.w), "down: 回退结构不一致");
-  result.scenarios.down = {
-    baseline_ms: rb.ms,
-    current_ms: rc.ms,
-    speedup: +(rb.ms / rc.ms).toFixed(2),
-  };
+  result.baseline.down = rb.ms;
+  result.current.down = rc.ms;
+  result.speedup.down = +(rb.ms / rc.ms).toFixed(2);
 }
 
-for (const [name, s] of Object.entries(result.scenarios)) {
-  console.log(`[watch] ${name}: ${s.baseline_ms}ms → ${s.current_ms}ms (×${s.speedup})`);
+for (const [name, s] of Object.entries(result.speedup)) {
+  console.log(`[watch] ${name}: ${result.baseline[name]}ms → ${result.current[name]}ms (×${s})`);
 }
 console.log("##RESULT## " + JSON.stringify(result));
