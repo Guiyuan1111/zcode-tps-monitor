@@ -37,10 +37,54 @@ function rng(seed) {
 function genFixture(file, rows) {
   fs.rmSync(file, { force: true });
   const db = new DatabaseSync(file);
+  // 与真实 ~/.zcode/cli/db/db.sqlite 的 model_usage 表同构(列集/索引一字不差,
+  // 从真实库 sqlite_master 转录),确保基准的查询计划与生产一致
   db.exec(`CREATE TABLE model_usage (
-    session_id TEXT, status TEXT, query_source TEXT, model_id TEXT,
-    output_tokens INTEGER, reasoning_tokens INTEGER, input_tokens INTEGER, cache_read_input_tokens INTEGER,
-    first_token_at INTEGER, completed_at INTEGER, time_to_first_token_ms INTEGER, turn_id TEXT)`);
+        id text primary key,
+        logical_request_id text not null,
+        attempt_index integer not null default 0,
+        session_id text not null,
+        turn_id text,
+        trace_id text,
+        span_id text,
+        assistant_message_id text,
+        parent_user_message_id text,
+        query_source text not null,
+        provider_id text not null,
+        model_id text not null,
+        variant text,
+        agent text,
+        mode text,
+        task_type text,
+        status text not null,
+        started_at integer not null,
+        first_token_at integer,
+        completed_at integer,
+        duration_ms integer,
+        time_to_first_token_ms integer,
+        finish_reason text,
+        tool_call_count integer not null default 0,
+        input_tokens integer not null default 0,
+        output_tokens integer not null default 0,
+        reasoning_tokens integer not null default 0,
+        cache_creation_input_tokens integer not null default 0,
+        cache_read_input_tokens integer not null default 0,
+        provider_total_tokens integer,
+        computed_total_tokens integer not null default 0,
+        retry_count integer not null default 0,
+        retryable integer not null default 0,
+        cancelled_by_user integer not null default 0,
+        context_exceeded integer not null default 0,
+        error_type text,
+        error_code text,
+        error_message text,
+        raw_usage_json text,
+        provider_metadata_json text
+      );
+      CREATE INDEX model_usage_started_model_idx on model_usage(started_at, provider_id, model_id);
+      CREATE INDEX model_usage_session_turn_idx on model_usage(session_id, turn_id);
+      CREATE INDEX model_usage_trace_idx on model_usage(trace_id);
+      CREATE INDEX model_usage_query_source_idx on model_usage(query_source);`);
 
   const rand = rng(42);
   const now = Date.now();
@@ -48,7 +92,11 @@ function genFixture(file, rows) {
   const t0 = spanEnd - 60 * 24 * 3600 * 1000;         // 起点:60 天前
   const span = spanEnd - t0;
 
-  const ins = db.prepare("INSERT INTO model_usage VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+  const ins = db.prepare(`INSERT INTO model_usage
+    (id, logical_request_id, session_id, turn_id, query_source, provider_id, model_id,
+     status, started_at, first_token_at, completed_at, duration_ms, time_to_first_token_ms,
+     finish_reason, input_tokens, output_tokens, reasoning_tokens, cache_read_input_tokens)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
   db.exec("BEGIN");
   for (let i = 0; i < rows; i++) {
     const r = (i + 1) / rows;
@@ -58,20 +106,23 @@ function genFixture(file, rows) {
     const genMs = 500 + Math.floor(rand() * 25_000);
     const output = 100 + Math.floor(rand() * 3_900);
     const reasoning = rand() < 0.4 ? Math.floor(rand() * 2_000) : 0;
-    ins.run(sid, "completed", source, "bench-model",
-      output, reasoning, 120_000, 118_000,
-      completed - genMs, completed, 200 + Math.floor(rand() * 2_000),
-      `t_${Math.floor(i / 3)}`);
+    ins.run(`r_${i}`, `lr_${i}`, sid, `t_${Math.floor(i / 3)}`, source, "bench", "bench-model",
+      "completed", completed - genMs - 300, completed - genMs, completed, genMs + 300,
+      200 + Math.floor(rand() * 2_000), "stop",
+      120_000, output, reasoning, 118_000);
   }
-  // sess_cur 最新一轮(3 段 main_turn):--turn --current 的目标数据
+  // sess_cur 最新一轮(3 段 main_turn + 1 段 sub):--turn --current 的目标数据。
+  // 特意混入 sub 行:等价断言必须覆盖"main scope 下 sub 行被排除"的过滤路径
   const lastTurn = `t_${Math.ceil(rows / 3)}`;
   for (let k = 0; k < 3; k++) {
     const completed = now - 30_000 + k * 100;
     const genMs = 800 + k * 400;
-    ins.run("sess_cur", "completed", "main_turn", "bench-model",
-      900 + k * 300, 0, 120_000, 118_000,
-      completed - genMs, completed, 300 + k * 100, lastTurn);
+    ins.run(`r_last_${k}`, `lr_last_${k}`, "sess_cur", lastTurn, "main_turn", "bench", "bench-model",
+      "completed", completed - genMs - 300, completed - genMs, completed, genMs + 300,
+      300 + k * 100, "stop", 120_000, 900 + k * 300, 0, 118_000);
   }
+  ins.run("r_last_sub", "lr_last_sub", "sess_cur", lastTurn, "sub", "bench", "bench-model",
+    "completed", now - 29_500, now - 29_400, now - 29_300, 1_000, 500, "stop", 120_000, 4_321, 0, 118_000);
   db.exec("COMMIT");
   db.close();
   return { file, rows: rows + 3 };
