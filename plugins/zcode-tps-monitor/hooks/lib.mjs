@@ -1,0 +1,31 @@
+#!/usr/bin/env node
+// 钩子共用:跨进程状态文件写入与用户配置读取。
+// (此前三个钩子各持一份拷贝,是口径漂移的温床——统一到此处。)
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+// 路径契约与 scripts/token-rate.mjs 保持一致(可用环境变量覆盖,便于测试/多实例)
+const STATE_FILE =
+  process.env.TPS_MONITOR_STATE_FILE ||
+  path.join(os.homedir(), ".zcode", "tps-monitor.last-session.json");
+const CONFIG_FILE = path.join(os.homedir(), ".zcode", "tps-monitor.config.json");
+
+// 记录"用户最后所处的会话"与时刻:
+// token-rate 的会话跟随与 --current 守卫都以 ts 为基准,缺失则守卫退化为放行。
+export function writeSessionState(sid, source) {
+  if (!sid) return;
+  try {
+    fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ sessionId: sid, ts: Date.now(), source }));
+  } catch {}
+}
+
+export function readConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf8"));
+  } catch {
+    return {};
+  }
+}

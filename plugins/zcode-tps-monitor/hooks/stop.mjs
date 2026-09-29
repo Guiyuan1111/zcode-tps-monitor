@@ -2,12 +2,11 @@
 // Stop hook: 主回复刚结束 → 本轮(刚完成的用户轮次)的全部请求已写入 usage 库。
 // 此时计算"本轮即时速率",经 systemMessage 直接显示给用户——
 // 消除 UserPromptSubmit 只能看到上一轮的固有滞后(发送消息的瞬间本轮尚未发生)。
-// 输出严格 JSON;任何异常静默退出,不影响对话。
+// 当前客户端版本暂不触发该事件(兼容保留)。输出严格 JSON;任何异常静默退出,不影响对话。
 
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { queryTurn, formatTurnLine } from "../scripts/token-rate.mjs";
+import { fileURLToPath } from "node:url";
+import { writeSessionState, readConfig } from "./lib.mjs";
 
 // stdin 是钩子入参 JSON(含 session_id);设超时兜底,客户端不给 stdin 也不挂起
 function readStdin() {
@@ -27,28 +26,6 @@ function readStdin() {
   });
 }
 
-function readConfig() {
-  try {
-    return JSON.parse(
-      fs.readFileSync(path.join(os.homedir(), ".zcode", "tps-monitor.config.json"), "utf8")
-    );
-  } catch {
-    return {};
-  }
-}
-
-function noteSession(sid) {
-  if (!sid) return;
-  try {
-    const file = path.join(os.homedir(), ".zcode", "tps-monitor.last-session.json");
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(
-      file,
-      JSON.stringify({ sessionId: sid, ts: Date.now(), source: "stop" })
-    );
-  } catch {}
-}
-
 async function main() {
   let payload = {};
   try {
@@ -59,10 +36,13 @@ async function main() {
     process.env.ZCODE_SESSION_ID ||
     process.env.CLAUDE_SESSION_ID ||
     "";
-  noteSession(sid);
+  writeSessionState(sid, "stop");
 
   const cfg = readConfig();
   if (cfg.tokenRateLine === false || cfg.stopHookLine === false) return;
+
+  // 动态导入:不支持 node:sqlite 的旧版 Node 在此优雅退出,而非模块加载即崩
+  const { queryTurn, formatTurnLine } = await import("../scripts/token-rate.mjs");
 
   // Stop 触发与末次请求写库之间存在毫秒级竞态,短重试直到本轮出现有效样本
   let r = null;

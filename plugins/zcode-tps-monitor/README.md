@@ -6,9 +6,8 @@
 
 | 形态 | 入口 | 说明 |
 |---|---|---|
-| 本问统计 | `hooks/prompt-submit.mjs` + `scripts/token-rate.mjs` | 每轮注入「本问统计指令」:模型在回复收尾时运行 `token-rate.mjs --turn --current`,把本问即时速率行附在回复末尾;`--current` 守卫保证绝不显示上一轮。`{"tokenRateLine": false}` 可整体关闭 |
-| 上下文注入 | `hooks/prompt-submit.mjs` | 每轮读取 ZCode usage 数据库,注入上一轮速率作为模型内部参考(标注勿展示);随 tokenRateLine 一并关闭 |
-| 会话提示 | `hooks/session-start.mjs` | 会话启动时记录会话 ID,并注入使用提示(收尾自测机制说明) |
+| 本问统计 | `hooks/prompt-submit.mjs` + `scripts/token-rate.mjs` | 每轮注入「本问统计指令」:模型在回复收尾时运行 `token-rate.mjs --turn --current`,把本问即时速率行附在回复末尾;命令行内联 `ZCODE_SESSION_ID`(多窗口锁定本会话),`--current` 守卫保证绝不显示上一轮。`{"tokenRateLine": false}` 可整体关闭 |
+| 会话提示 | `hooks/session-start.mjs` | 会话启动/恢复/压缩时记录会话 ID,并注入使用提示(收尾自测机制说明) |
 | 自检 | `/tps-doctor`(`scripts/doctor.mjs`) | 检查 Node 版本、数据库与表结构、状态/配置文件;`--json` 可编程消费 |
 | 斜杠命令 | `/zcode-tps-monitor:tps` | 即时快照;`/zcode-tps-monitor:tps 10` 采样观察 10 秒 |
 | 技能 | `zcode-tps-monitor` | 用户询问速率/TPS 相关问题时自动触发 |
@@ -76,8 +75,9 @@ zcode-tps-monitor/
 ├── commands/tps-doctor.md      # /zcode-tps-monitor:tps-doctor
 ├── skills/zcode-tps-monitor/SKILL.md  # 自动触发技能
 ├── hooks/hooks.json            # 钩子注册(SessionStart + UserPromptSubmit + Stop)
+├── hooks/lib.mjs               # 钩子共用:状态文件写入 + 配置读取
 ├── hooks/session-start.mjs     # 会话启动:记录会话 ID + 使用提示
-├── hooks/prompt-submit.mjs     # 每轮:记录提问时刻 + 注入本问统计指令
+├── hooks/prompt-submit.mjs     # 每轮:记录提问时刻 + 注入本问统计指令(内联会话 ID)
 ├── hooks/stop.mjs              # 兼容保留:当前客户端不触发 Stop 事件
 ├── mcp/tps-server.mjs          # stdio MCP server
 ├── scripts/
