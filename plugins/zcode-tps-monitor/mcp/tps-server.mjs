@@ -41,11 +41,24 @@ const TOOLS = [
   },
 ];
 
+// 响应写合并:同一事件循环 tick 内产生的多条响应一次性拼帧写出。
+// 每条消息仍是独立的 Content-Length 帧(协议不变),只是把 N 次 stdout
+// 系统调用合并为 1 次——批量请求(burst)场景的主要吞吐瓶颈
+let outQueue = [];
+let flushScheduled = false;
+function flushOut() {
+  flushScheduled = false;
+  if (!outQueue.length) return;
+  const parts = outQueue.map((body) => `Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`);
+  outQueue = [];
+  process.stdout.write(parts.join(""));
+}
 function writeMessage(message) {
-  const body = JSON.stringify(message);
-  // MCP stdio 帧:Content-Length 头 + 体(同时兼容简单客户端的裸 JSON 行)
-  const payload = `Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`;
-  process.stdout.write(payload);
+  outQueue.push(JSON.stringify(message));
+  if (!flushScheduled) {
+    flushScheduled = true;
+    queueMicrotask(flushOut);
+  }
 }
 
 const ok = (id, result) => writeMessage({ jsonrpc: "2.0", id, result });
@@ -117,20 +130,26 @@ function handleRaw(raw) {
 }
 
 let buffer = Buffer.alloc(0);
+let framed = false; // 见到第一个 Content-Length 帧后置位:后续不再做裸 JSON 行探测
 
 process.stdin.on("data", (chunk) => {
   buffer = Buffer.concat([buffer, chunk]);
   while (true) {
     const headerEnd = buffer.indexOf("\r\n\r\n");
     if (headerEnd === -1) {
-      const asText = buffer.toString("utf8");
-      if (asText.includes("\n") && asText.trimStart().startsWith("{")) {
-        const lines = asText.split(/\r?\n/);
-        buffer = Buffer.from(lines.pop() || "", "utf8");
-        for (const line of lines) handleRaw(line);
+      // 帧模式下静待更多字节即可;裸行兼容探测(整个缓冲转字符串+按行拆分)
+      // 只对未确认帧模式的客户端执行,避免大帧分块到达时的重复全量解码
+      if (!framed) {
+        const asText = buffer.toString("utf8");
+        if (asText.includes("\n") && asText.trimStart().startsWith("{")) {
+          const lines = asText.split(/\r?\n/);
+          buffer = Buffer.from(lines.pop() || "", "utf8");
+          for (const line of lines) handleRaw(line);
+        }
       }
       break;
     }
+    framed = true;
     const header = buffer.slice(0, headerEnd).toString("utf8");
     const match = /Content-Length:\s*(\d+)/i.exec(header);
     if (!match) {
