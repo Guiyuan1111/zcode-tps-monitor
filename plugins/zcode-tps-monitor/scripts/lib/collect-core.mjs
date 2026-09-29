@@ -159,24 +159,28 @@ export async function snapshot(env = process.env) {
 export async function watch(seconds, env = process.env) {
   const n = clamp(Math.round(seconds || 5), 2, 60);
   const url = resolveUrl(env);
-  const samples = [];
+  // 节拍对齐:每秒固定发起一次采样(而非等前一次返回后再计时),
+  // 总时长 ≈ (n-1)×1s + 单次耗时,慢接口下不再是 n×(耗时+1s)。
+  // 失败回退最多滞后一拍:慢失败端点(挂到超时才报错)可能多发出几个
+  // 并发请求,每个都有 3s 超时兜底,不影响总时长与结果结构。
   let mode = url ? "remote" : "demo";
   let fallbackNote = null;
+  const jobs = [];
   for (let i = 0; i < n; i++) {
     if (url && mode === "remote") {
-      try {
-        const m = await fetchRemoteMetrics(url, 3000);
-        samples.push(m);
-      } catch (err) {
-        mode = "demo";
-        fallbackNote = `接口不可用(${err.message}),已回退演示数据`;
-        samples.push(demoStep());
-      }
+      jobs.push(
+        fetchRemoteMetrics(url, 3000).catch((err) => {
+          mode = "demo";
+          fallbackNote = `接口不可用(${err.message}),已回退演示数据`;
+          return demoStep();
+        })
+      );
     } else {
-      samples.push(demoStep());
+      jobs.push(Promise.resolve(demoStep()));
     }
     if (i < n - 1) await new Promise((r) => setTimeout(r, 1000));
   }
+  const samples = await Promise.all(jobs);
   const tpsArr = samples.map((s) => s.tps).sort((a, b) => a - b);
   const stat = (arr, q) => arr[Math.min(arr.length - 1, Math.floor(arr.length * q))];
   const avg = (f) => r1(samples.reduce((s, x) => s + (x[f] ?? 0), 0) / samples.filter((x) => x[f] != null).length);
