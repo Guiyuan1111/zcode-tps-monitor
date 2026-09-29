@@ -6,7 +6,7 @@
 ![Node](https://img.shields.io/badge/node-%E2%89%A5%2022.5-brightgreen)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 
-**ZCode 会话级 Token 速率监控插件。** 每条**调用了工具**的回答,末尾都会附一行**本问**(本次提问)的即时 tok/s 统计——数据直接读取 ZCode usage 数据库,非模型自述、非估算,且有守卫保证**绝不显示上一轮**;另附实时监控大屏、斜杠命令、MCP 工具与可选的业务 TPS 监控。
+**ZCode 会话级 Token 速率监控插件。** 每条**调用了工具**的回答,末尾都会附一行**本问**(本次提问)的即时 tok/s 统计——数据直接读取 ZCode usage 数据库,非模型自述、非估算,且有守卫保证**绝不显示上一轮**;另附斜杠命令、MCP 工具与可选的业务 TPS 监控。
 
 > 本仓库同时是一个 ZCode 本地插件市场(marketplace 名称:`tps-local-marketplace`),插件本体位于 [`plugins/zcode-tps-monitor/`](plugins/zcode-tps-monitor/README.md)。
 
@@ -30,10 +30,8 @@
 ## 功能特性
 
 - **真实 Token 速率(默认开启)** —— 每条调用了工具的回答末尾自动附**本问即时 tok/s**(含思考 token)、首字延迟、输出 token 数、生成耗时、段数/峰值与会话累计;`--current` 守卫保证绝不把上一轮数据当作本问显示
-- **实时监控大屏** —— `/zcode-tps-monitor:dashboard` 一键拉起,浏览器深色运维风格面板,秒级自动刷新;空闲 3 小时自动退出,不留后台进程
 - **斜杠命令** —— `/tps` 即时快照;`/tps 10` 采样观察 10 秒;`/tps-doctor` 环境自检
 - **MCP 工具** —— `tps_snapshot` / `tps_watch`,供 agent 程序化取数
-- **悬浮条(Windows)** —— 桌面常驻文字悬浮条,随时可见当前速率
 - **业务 TPS 监控(可选)** —— 配置 `metrics_url` 接入真实业务指标接口,或使用内置演示数据
 
 ## 安装
@@ -65,10 +63,8 @@
 |---|---|
 | 查看本问速率 | 无需操作:调用了工具的回答,末尾自动附本问统计行(纯问答不显示) |
 | 即时快照 | 输入 `/tps`;或 `/tps 10` 持续采样 10 秒 |
-| 打开监控大屏 | 输入 `/zcode-tps-monitor:dashboard`,或手动 `node dashboard/server.mjs` |
 | 环境自检 | 速率行不见了?输入 `/tps-doctor` 逐项排查 |
 | 关闭速率注入(含末尾统计行) | `~/.zcode/tps-monitor.config.json` 写入 `{"tokenRateLine": false}`,重开会话生效 |
-| 桌面悬浮条 | 运行 `dashboard/overlay.ps1`(Windows) |
 | agent 取数 | MCP 工具 `tps_snapshot` / `tps_watch` |
 
 要求 Node ≥ 22.5(需内置 `node:sqlite`,Windows / macOS / Linux 相同)。
@@ -128,7 +124,7 @@ A:速率由 ZCode usage 数据库中的真实 token 累计值计算得出,口径
 
 **Q:纯问答回复(没调用工具)为什么没有统计行?**
 
-A:这是有意的。收尾自测发生在回复结束之前,而纯问答轮唯一的模型请求要等回复结束才写入数据库——此刻它还不可见。`--current` 守卫检测到"本问尚无入库数据"就不输出任何统计行,绝不会拿上一轮的数据充数。想看最近的统计可运行 `/tps` 或打开监控大屏。
+A:这是有意的。收尾自测发生在回复结束之前,而纯问答轮唯一的模型请求要等回复结束才写入数据库——此刻它还不可见。`--current` 守卫检测到"本问尚无入库数据"就不输出任何统计行,绝不会拿上一轮的数据充数。想看最近的统计可运行 `/tps`。
 
 **Q:速率行突然不见了?**
 
@@ -136,7 +132,7 @@ A:运行 `/tps-doctor` 自检。常见原因:Node 版本低于 22.5(需内置 `n
 
 **Q:macOS / Linux 支持吗?**
 
-A:支持。钩子、命令、大屏、MCP 均为跨平台 Node 实现;usage 数据库路径按用户主目录自动解析(`~/.zcode/cli/db/db.sqlite`),特殊安装位置可用 `ZCODE_USAGE_DB` 环境变量覆盖。唯一例外是桌面悬浮条 `overlay.ps1`,它依赖 Windows API,仅限 Windows(macOS 用户用监控大屏即可)。
+A:支持。钩子、命令、MCP 均为跨平台 Node 实现;usage 数据库路径按用户主目录自动解析(`~/.zcode/cli/db/db.sqlite`),特殊安装位置可用 `ZCODE_USAGE_DB` 环境变量覆盖。
 
 **Q:演示数据怎么关掉?**
 

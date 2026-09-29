@@ -31,7 +31,7 @@ const hint = [
   `[zcode-tps-monitor] 已就绪。每条回复收尾时(若该回复调用过工具)运行一次:node "${RATE_SCRIPT}" --turn --current,`,
   "把输出的一行原样放入 Markdown 引用块(行首加「> 」)贴在回复最末尾;脚本没有输出(如纯问答)则不显示任何统计行。",
   "上下文里【内部背景·勿展示】的历史速率行仅供了解背景,绝不展示给用户。",
-  "命令:/tps(快照)、/tps-doctor(自检)。大屏:node dashboard/server.mjs(http://127.0.0.1:7423);关闭注入:~/.zcode/tps-monitor.config.json → {\"tokenRateLine\":false}。",
+  "命令:/tps(快照)、/tps-doctor(自检)。关闭注入:~/.zcode/tps-monitor.config.json → {\"tokenRateLine\":false}。",
 ].join("");
 
 process.stdout.write(

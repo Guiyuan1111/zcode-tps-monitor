@@ -9,9 +9,7 @@
 | 本问统计 | `hooks/prompt-submit.mjs` + `scripts/token-rate.mjs` | 每轮注入「本问统计指令」:模型在回复收尾时运行 `token-rate.mjs --turn --current`,把本问即时速率行附在回复末尾;`--current` 守卫保证绝不显示上一轮。`{"tokenRateLine": false}` 可整体关闭 |
 | 上下文注入 | `hooks/prompt-submit.mjs` | 每轮读取 ZCode usage 数据库,注入上一轮速率作为模型内部参考(标注勿展示);随 tokenRateLine 一并关闭 |
 | 会话提示 | `hooks/session-start.mjs` | 会话启动时记录会话 ID,并注入使用提示(收尾自测机制说明) |
-| 自检 | `/tps-doctor`(`scripts/doctor.mjs`) | 检查 Node 版本、数据库与表结构、状态/配置文件、大屏进程;`--json` 可编程消费 |
-| 实时大屏 | `dashboard/server.mjs` | 浏览器监控面板,秒级自动刷新,含「最新一问(本问)」实时卡片;`/zcode-tps-monitor:dashboard` 拉起,或手动运行 |
-| 悬浮条 | `dashboard/overlay.ps1` | Windows 桌面常驻文字悬浮条 |
+| 自检 | `/tps-doctor`(`scripts/doctor.mjs`) | 检查 Node 版本、数据库与表结构、状态/配置文件;`--json` 可编程消费 |
 | 斜杠命令 | `/zcode-tps-monitor:tps` | 即时快照;`/zcode-tps-monitor:tps 10` 采样观察 10 秒 |
 | 技能 | `zcode-tps-monitor` | 用户询问速率/TPS 相关问题时自动触发 |
 | MCP 工具 | `tps_snapshot` / `tps_watch` | stdio MCP server(`mcp/tps-server.mjs`),供 agent 程序化取数 |
@@ -47,12 +45,6 @@ node scripts/token-rate.mjs --json           # JSON
 ## 开发与测试
 
 ```bash
-# 实时大屏(默认 http://127.0.0.1:7423;空闲 180 分钟自退,--idle-exit 0 关闭)
-node dashboard/server.mjs
-node dashboard/server.mjs --port 8080
-node dashboard/server.mjs --idle-exit 30
-TPS_URL=http://host/metrics node dashboard/server.mjs   # 接真实数据源
-
 # 自检
 node scripts/doctor.mjs             # 人类可读(❌ 项给出修复建议)
 node scripts/doctor.mjs --json      # JSON,失败时退出码 1
@@ -81,18 +73,13 @@ zcode-tps-monitor/
 ├── .claude-plugin/plugin.json  # 兼容清单
 ├── .mcp.json                   # MCP server 注册(${ZCODE_PLUGIN_ROOT})
 ├── commands/tps.md             # /zcode-tps-monitor:tps
-├── commands/dashboard.md       # /zcode-tps-monitor:dashboard
 ├── commands/tps-doctor.md      # /zcode-tps-monitor:tps-doctor
 ├── skills/zcode-tps-monitor/SKILL.md  # 自动触发技能
 ├── hooks/hooks.json            # 钩子注册(SessionStart + UserPromptSubmit + Stop)
 ├── hooks/session-start.mjs     # 会话启动:记录会话 ID + 使用提示
-├── hooks/prompt-submit.mjs     # 每轮:记录提问时刻 + 注入上一轮参考 + 本问统计指令
+├── hooks/prompt-submit.mjs     # 每轮:记录提问时刻 + 注入本问统计指令
 ├── hooks/stop.mjs              # 兼容保留:当前客户端不触发 Stop 事件
 ├── mcp/tps-server.mjs          # stdio MCP server
-├── dashboard/
-│   ├── server.mjs              # HTTP 服务(页面 + /api/metrics)
-│   ├── index.html              # 大屏布局(纯原生,无外部依赖)
-│   └── overlay.ps1             # Windows 悬浮条
 ├── scripts/
 │   ├── token-rate.mjs          # token 速率 CLI(人类可读 / --json)
 │   ├── collect.mjs             # 业务 TPS CLI 入口

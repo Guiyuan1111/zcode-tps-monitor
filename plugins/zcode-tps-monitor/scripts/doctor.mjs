@@ -18,7 +18,6 @@ const DB_PATH =
 const STATE_FILE =
   process.env.TPS_MONITOR_STATE_FILE || path.join(HOME, ".zcode", "tps-monitor.last-session.json");
 const CONFIG_FILE = path.join(HOME, ".zcode", "tps-monitor.config.json");
-const PID_FILE = path.join(HOME, ".zcode", "tps-monitor.dashboard.pid");
 
 // 钩子查询依赖的列(model_usage 表)
 const REQUIRED_COLS = [
@@ -131,29 +130,12 @@ function configCheck() {
   }
 }
 
-function dashboardCheck() {
-  try {
-    const pid = Number(fs.readFileSync(PID_FILE, "utf8").trim());
-    process.kill(pid, 0); // 探活
-    const stopCmd = process.platform === "win32" ? `taskkill /PID ${pid} /F` : `kill ${pid}`;
-    return {
-      name: "大屏进程",
-      ok: true,
-      detail: `运行中(PID ${pid})`,
-      hint: `如需停止:${stopCmd}`,
-    };
-  } catch {
-    return { name: "大屏进程", ok: true, detail: "未运行", hint: null };
-  }
-}
-
 export async function runDoctor() {
   const results = [];
   results.push(nodeVersionCheck());
   results.push(await dbCheck());
   results.push(stateFileCheck());
   results.push(configCheck());
-  results.push(dashboardCheck());
   return { checks: results, failed: results.filter((r) => !r.ok).length };
 }
 
