@@ -55,7 +55,13 @@ node scripts/collect.mjs --watch 5  # 采样 5 秒
 
 # 单元测试(仓库根目录;临时库夹具,不读真实数据)
 node --test
+
+# 性能基准(仓库根目录 benchmark/;夹具与真实 usage 库同构,
+# 内建"优化前冻结副本 vs 当前代码"的行为等价断言)
+node benchmark/run-all.mjs
 ```
+
+性能优化的方法论、逐语句剖析与前后对比报告见仓库根 `benchmark/README.md` 与 `note/report/perf/`。
 
 ```bash
 # MCP server 冒烟

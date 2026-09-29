@@ -116,7 +116,7 @@ UserPromptSubmit 钩子
 
 **Q:可以在 OpenCode / Codex / Claude Code 等其他工具中使用吗?**
 
-A:插件机制、钩子与数据源均绑定 ZCode,token 速率功能是 ZCode 专属;其中业务 TPS 采集脚本与大屏是独立程序,可脱离 ZCode 运行,但离开 ZCode 没有速率数据来源。
+A:插件机制、钩子与数据源均绑定 ZCode,token 速率功能是 ZCode 专属;其中业务 TPS 采集脚本(`scripts/collect.mjs`)是独立程序,可脱离 ZCode 运行,但离开 ZCode 没有速率数据来源。
 
 **Q:显示的速率准确吗?**
 
@@ -137,6 +137,18 @@ A:支持。钩子、命令、MCP 均为跨平台 Node 实现;usage 数据库路�
 **Q:演示数据怎么关掉?**
 
 A:演示数据只影响"业务 TPS"部分(Token 速率始终真实);不配置 `metrics_url` 即为演示模式,配置后自动切换为真实数据源。
+
+## 开发与测试
+
+```bash
+node --test                                  # 单元测试(临时库夹具,不读真实数据)
+node benchmark/fixture-gen.mjs               # 生成性能基准夹具(与真实 usage 库同构)
+node benchmark/run-all.mjs                   # 全量性能基准(优化前冻结副本 vs 当前代码)
+BENCH_SIZE=large node benchmark/run-all.mjs  # 100k 行大夹具
+```
+
+- 性能基准的方法论与前后对比见 [`benchmark/README.md`](benchmark/README.md) 与 [`note/report/perf/`](note/report/perf/) 的对比报告;基准内建行为等价断言,优化不得改变任何输出。
+- 每个版本的改动要点归档在 [`note/release/`](note/release/),笔记索引见 [`note/README.md`](note/README.md)。
 
 ## License
 
