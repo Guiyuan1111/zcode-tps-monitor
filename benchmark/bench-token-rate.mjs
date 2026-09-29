@@ -12,6 +12,7 @@
 //   node benchmark/bench-token-rate.mjs [small|medium|large]   BENCH_ITERS=200
 
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import url from "node:url";
@@ -41,6 +42,10 @@ process.env.TOKEN_RATE_MAX_MS = "3600000";
 
 const baseline = await import(url.pathToFileURL(path.join(ROOT, "benchmark", "baseline-v0.9.0", "scripts", "token-rate.mjs")).href);
 const current = await import(url.pathToFileURL(path.join(ROOT, "plugins", "zcode-tps-monitor", "scripts", "token-rate.mjs")).href + "?cur");
+
+// --- 安全性红线:基准开始前记录库文件哈希(结束时必须不变,证明全程零写入) ---
+const fileHash = () => createHash("sha256").update(fs.readFileSync(dbFile)).digest("hex");
+const dbHashBefore = fileHash();
 
 // --- 兼容性红线:行为必须逐字节等价(夹具固定 → 输出确定) ---
 assert.deepEqual(current.queryTurn("sess_cur"), baseline.queryTurn("sess_cur"), "queryTurn(sid) 输出不一致");
@@ -87,5 +92,11 @@ for (const [name, call] of Object.entries(CASES)) {
   result.speedup[name] = +(b / c).toFixed(2);
 }
 result.rows = fs.statSync(dbFile).size; // 字节数,行数见 fixture-gen 输出
+
+// --- 安全性红线:整个基准跑完后,夹具库文件必须逐字节未变(只读证明) ---
+assert.equal(fileHash(), dbHashBefore, "库文件被修改过!");
+const sideFiles = fs.readdirSync(TEMP).filter((f) => /-wal$|-shm$/.test(f));
+assert.deepEqual(sideFiles, [], "出现了 WAL/共享内存旁文件(不应有写入)");
+
 console.log(`[token-rate/${size}] ` + Object.entries(result.speedup).map(([k, v]) => `${k}×${v}`).join("  "));
 console.log("##RESULT## " + JSON.stringify(result));

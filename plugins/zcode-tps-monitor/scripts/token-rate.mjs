@@ -48,7 +48,16 @@ function readState() {
 }
 
 function openDb() {
-  return new DatabaseSync(DB_PATH, { readOnly: true });
+  const db = new DatabaseSync(DB_PATH, { readOnly: true });
+  // 连接级读取调优(全部不写库文件,基准内有哈希不变断言佐证):
+  //   mmap_size  内存映射读大库,免逐页系统调用拷贝(收益最大)
+  //   temp_store 排序中间结果驻留内存(查询计划里的 TEMP B-tree 不落盘)
+  //   cache_size 页缓存加大到 16MB,同进程多条查询复用已解析页
+  // 任何 PRAGMA 在特定环境不可用时仅退回默认行为,结果不受影响
+  try {
+    db.exec("PRAGMA mmap_size=134217728; PRAGMA temp_store=MEMORY; PRAGMA cache_size=-16384;");
+  } catch {}
+  return db;
 }
 
 // 未显式指定会话时的解析顺序:状态文件里"用户最后所处的会话"(切会话即跟随)→
