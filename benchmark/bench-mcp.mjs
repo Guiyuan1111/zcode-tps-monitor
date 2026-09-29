@@ -3,7 +3,8 @@
 // 场景(两个变体各跑一次,交错):
 //   chunked  1×initialize + N×tools/list,分多次写入(每块 25 帧)——典型客户端节奏
 //   burst    200 帧一次写入——压测单块多帧的解析循环
-// 校验:响应数量相等、initialize 应答一致(版本来自 plugin.json,两处已对齐)。
+// 校验:响应数量相等;另跑一轮 initialize+tools/list+ping 探测,
+// 归一化 serverInfo 版本号后逐字节比对(序列化改造不得改变协议应答)。
 // 结果行:##RESULT## {json}
 //
 //   node benchmark/bench-mcp.mjs    BENCH_MCP_N=300
@@ -71,19 +72,65 @@ function runServer(script, scenario) {
 const result = { bench: "mcp", n: N, rounds: ROUNDS, baseline: {}, current: {}, speedup: {} };
 for (const scenario of ["chunked", "burst"]) {
   const b = [], c = [];
-  let initB = null, initC = null;
   for (let i = 0; i < ROUNDS; i++) {
     const rb = await runServer(VARIANTS.baseline, scenario);
     const rc = await runServer(VARIANTS.current, scenario);
     assert.equal(rb.got, rc.got, `${scenario}: 响应数不一致`);
     b.push(rb.ms); c.push(rc.ms);
-    initB ??= rb.init; initC ??= rc.init;
   }
-  assert.equal(initB, initC, `${scenario}: initialize 应答不一致`);
   const avg = (a) => a.reduce((s, x) => s + x, 0) / a.length;
   result.baseline[scenario] = +avg(b).toFixed(1);
   result.current[scenario] = +avg(c).toFixed(1);
   result.speedup[scenario] = +(result.baseline[scenario] / result.current[scenario]).toFixed(2);
 }
-console.log(`[mcp] chunked×${result.speedup.chunked}  burst×${result.speedup.burst}`);
+
+// --- 红线:协议应答逐字节一致(归一化 serverInfo 里的版本号差异后) ---
+async function probeOutputs(script) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [script], { stdio: ["pipe", "pipe", "pipe"] });
+    let out = "";
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (c) => (out += c));
+    child.stderr.on("data", () => {});
+    child.on("error", reject);
+    const timer = setTimeout(() => { child.kill(); reject(new Error("probe 超时")); }, 20_000);
+    const poll = setInterval(() => {
+      if ((out.match(/"jsonrpc":"2\.0"/g) || []).length >= 3) {
+        clearInterval(poll); clearTimeout(timer); child.kill();
+        resolve(out.replace(/"version":"0\.\d+\.\d+"/g, '"version":"V"'));
+      }
+    }, 5);
+    child.stdin.write(Buffer.concat([
+      req(0, "initialize"),
+      frame({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      frame({ jsonrpc: "2.0", id: 2, method: "ping" }),
+    ]));
+  });
+}
+assert.equal(await probeOutputs(VARIANTS.baseline), await probeOutputs(VARIANTS.current), "协议应答不一致");
+
+// --- 微基准(确定性,纯 CPU):tools/list 单帧序列化成本 ---
+// 从探测应答里解析出真实的 result 对象,避免在基准里复制一份会漂移的 TOOLS 定义
+const probeOut = await probeOutputs(VARIANTS.current);
+const body1 = /(\{"jsonrpc":"2\.0","id":1[^]*?\})(?=Content-Length:|$)/.exec(probeOut)[1];
+const toolsResult = JSON.parse(body1).result;
+const pre = JSON.stringify(toolsResult);
+assert.deepEqual(JSON.parse(pre), toolsResult); // 预序列化串内容一致
+function microBench(label, fn) {
+  const iters = 20_000;
+  fn(); fn(); // 预热
+  const t0 = process.hrtime.bigint();
+  for (let i = 0; i < iters; i++) fn();
+  const ns = Number(process.hrtime.bigint() - t0) / iters;
+  return { label, nsPerOp: +ns.toFixed(0) };
+}
+const microWhole = microBench("object", () => JSON.stringify({ tools: toolsResult.tools }));
+const microPre = microBench("preserialized", () => `{"jsonrpc":"2.0","id":${JSON.stringify(42)},"result":${pre}}`);
+result.micro = {
+  wholeObject_nsPerFrame: microWhole.nsPerOp,
+  preserialized_nsPerFrame: microPre.nsPerOp,
+};
+
+console.log(`[mcp] chunked×${result.speedup.chunked}  burst×${result.speedup.burst}` +
+  `  micro:object=${microWhole.nsPerOp}ns preserialized=${microPre.nsPerOp}ns`);
 console.log("##RESULT## " + JSON.stringify(result));

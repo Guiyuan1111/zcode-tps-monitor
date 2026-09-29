@@ -61,6 +61,18 @@ function writeMessage(message) {
   }
 }
 
+// tools/list 应答的 result 部分是常量:预序列化一份,批量请求时省去每次
+// JSON.stringify 整个工具清单。拼接结果与整体序列化逐字节一致
+// (JSON.stringify 按对象字面量的插入序输出键)
+const TOOLS_RESULT_JSON = JSON.stringify({ tools: TOOLS });
+function writeToolsList(id) {
+  outQueue.push(`{"jsonrpc":"2.0","id":${JSON.stringify(id)},"result":${TOOLS_RESULT_JSON}}`);
+  if (!flushScheduled) {
+    flushScheduled = true;
+    queueMicrotask(flushOut);
+  }
+}
+
 const ok = (id, result) => writeMessage({ jsonrpc: "2.0", id, result });
 const fail = (id, code, message) =>
   writeMessage({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
@@ -84,7 +96,7 @@ async function handleRequest(msg) {
       ok(id, {});
       return;
     case "tools/list":
-      ok(id, { tools: TOOLS });
+      writeToolsList(id);
       return;
     case "tools/call": {
       const name = params?.name;
