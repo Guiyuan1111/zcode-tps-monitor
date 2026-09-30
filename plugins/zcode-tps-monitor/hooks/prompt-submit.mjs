@@ -6,7 +6,7 @@
 //    冒充本问(纯问答轮无输出)。
 //    指令命令行内联 ZCODE_SESSION_ID:多开 ZCode 窗口交替提问时,收尾自测锁定
 //    本会话,不受状态文件里"最后所处会话"被其他窗口覆盖的影响。
-//    命令使用 ~/.zcode/tps-rate.mjs 短路径副本(见 lib.mjs ensureRateShortcut):
+//    命令使用 ~/.zcode/token-rate.mjs 短路径副本(见 lib.mjs ensureRateShortcut):
 //    完整安装路径反斜杠密集、分词很差,占注入近半 token;副本创建失败时回退完整路径。
 // 输出必须为严格 JSON;任何失败注入空串,绝不阻塞对话。
 // 可选配置 ~/.zcode/tps-monitor.config.json:
@@ -29,7 +29,7 @@ function turnStatsInstruction() {
   const shortcut = ensureRateShortcut(RATE_SCRIPT);
   const cmd =
     (sid ? `ZCODE_SESSION_ID="${sid}" ` : "") +
-    (shortcut ? "node ~/.zcode/tps-rate.mjs" : `node "${RATE_SCRIPT}"`) +
+    (shortcut ? "node ~/.zcode/token-rate.mjs" : `node "${RATE_SCRIPT}"`) +
     " --turn --current";
   return [
     "",
