@@ -11,8 +11,8 @@ writeSessionState(sid, "session-start");
 // 注意力优化:机制细节以每轮注入的【本轮统计】指令为准,这里只保留一次性
 // 索引(命令入口 + 关闭开关),不重复讲解机制,也不写完整命令路径。
 const hint =
-  "[zcode-tps-monitor] 已就绪:每轮收尾统计见每轮注入的【本轮统计】指令。命令 /tps、/tps-doctor;" +
-  '关闭注入:~/.zcode/tps-monitor.config.json 设 {"tokenRateLine":false}。';
+  '[zcode-tps-monitor] 就绪:收尾统计见每轮【本轮统计】指令。/tps、/tps-doctor;' +
+  '关闭:~/.zcode/tps-monitor.config.json 设 {"tokenRateLine":false}。';
 
 process.stdout.write(
   JSON.stringify({
