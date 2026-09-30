@@ -6,13 +6,15 @@
 //    冒充本问(纯问答轮无输出)。
 //    指令命令行内联 ZCODE_SESSION_ID:多开 ZCode 窗口交替提问时,收尾自测锁定
 //    本会话,不受状态文件里"最后所处会话"被其他窗口覆盖的影响。
+//    命令使用 ~/.zcode/tps-rate.mjs 短路径副本(见 lib.mjs ensureRateShortcut):
+//    完整安装路径反斜杠密集、分词很差,占注入近半 token;副本创建失败时回退完整路径。
 // 输出必须为严格 JSON;任何失败注入空串,绝不阻塞对话。
 // 可选配置 ~/.zcode/tps-monitor.config.json:
 //   {"tokenRateLine": false} 关闭速率注入。
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeSessionState, readConfig } from "./lib.mjs";
+import { writeSessionState, readConfig, ensureRateShortcut } from "./lib.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const RATE_SCRIPT = path.join(HERE, "..", "scripts", "token-rate.mjs");
@@ -20,17 +22,22 @@ const RATE_SCRIPT = path.join(HERE, "..", "scripts", "token-rate.mjs");
 const sid = process.env.ZCODE_SESSION_ID || process.env.CLAUDE_SESSION_ID || "";
 writeSessionState(sid, "prompt-submit");
 
-// 本问统计指令:模型在收尾时自测当前提问的速率并引用。
-// --current 守卫确保:最新 turn 的数据早于本次提问时刻时脚本输出为空,
-// 此时模型不显示任何统计行 —— 任何情况下都不把上一轮数据当作本问展示。
-const WRAP_UP_CMD = `${sid ? `ZCODE_SESSION_ID="${sid}" ` : ""}node "${RATE_SCRIPT}" --turn --current`;
-const TURN_STATS_INSTRUCTION = [
-  "",
-  "【本轮统计指令】若你在本次回答中已经调用过工具,请在收尾时(所有其他工作完成之后、输出最终总结文字之前)运行一次:",
-  WRAP_UP_CMD,
-  "它会输出一行「本提问从提出到最近一次工具调用」的真实 token 速率统计。把该行原样放入 Markdown 引用块(在新行行首加「> 」)贴在回复最末尾;不要改写数字、不要追加任何其他内容。",
-  "若脚本没有输出任何统计行,或本次回答你没有调用过任何工具,则不要显示任何统计行、也不要为此额外调用工具。",
-].join("\n");
+// 本问统计指令(注意力优化:五要素齐全——①若调用过工具 ②收尾时机 ③命令
+// ④原样引用贴末尾不改写 ⑤无输出/未调用不显示不为此调用——但措辞压缩,
+// 且命令走短路径副本;~ 不加引号才会在 bash/PowerShell 里做 tilde 展开)
+function turnStatsInstruction() {
+  const shortcut = ensureRateShortcut(RATE_SCRIPT);
+  const cmd =
+    (sid ? `ZCODE_SESSION_ID="${sid}" ` : "") +
+    (shortcut ? "node ~/.zcode/tps-rate.mjs" : `node "${RATE_SCRIPT}"`) +
+    " --turn --current";
+  return [
+    "",
+    "【本轮统计】本回复若调用过工具,在输出总结前运行一次:",
+    cmd,
+    "把输出行原样放「> 」引用块贴在回复最末尾(不改写数字、不追加内容);无输出或未调用过工具则不显示任何统计行、不为此调用工具。",
+  ].join("\n");
+}
 
 function emit(ctx) {
   process.stdout.write(
@@ -40,7 +47,7 @@ function emit(ctx) {
 
 try {
   const cfg = readConfig();
-  emit(cfg.tokenRateLine === false ? "" : TURN_STATS_INSTRUCTION);
+  emit(cfg.tokenRateLine === false ? "" : turnStatsInstruction());
 } catch {
   emit("");
 }

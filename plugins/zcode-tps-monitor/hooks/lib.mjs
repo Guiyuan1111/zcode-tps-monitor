@@ -29,3 +29,25 @@ export function readConfig() {
     return {};
   }
 }
+
+// AI 收尾自测命令用的短路径副本:注入文本里的完整插件安装路径(反斜杠密集、
+// 分词很差)占指令近半 token;把零依赖独立的 token-rate.mjs 复制到
+// ~/.zcode/tps-rate.mjs 后,命令缩短到 ~40 字符。每次注入前校验内容,
+// 不一致(插件升级/换缓存版本)即刷新;任何失败返回 null,调用方回退完整路径。
+export function ensureRateShortcut(rateScriptPath) {
+  try {
+    const dest = path.join(os.homedir(), ".zcode", "tps-rate.mjs");
+    const src = fs.readFileSync(rateScriptPath);
+    let cur = null;
+    try {
+      cur = fs.readFileSync(dest);
+    } catch {}
+    if (!cur || !cur.equals(src)) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, src);
+    }
+    return dest;
+  } catch {
+    return null;
+  }
+}
