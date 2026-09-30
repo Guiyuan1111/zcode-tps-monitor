@@ -20,14 +20,16 @@ note/
 | 0.9.3 | [0.9.3.md](release/0.9.3.md) | 性能优化第二轮(轮5-6:MCP 序列化/watch 节拍),累计六轮,新增 bench-watch 与 collect 单测 |
 | 0.9.4 | [0.9.4.md](release/0.9.4.md) | 性能优化第三轮(轮7-8:连接级 PRAGMA/MAX() 裸列),累计八轮,基准内建只读哈希证明 |
 | 0.9.5 | [0.9.5.md](release/0.9.5.md) | 文档对齐:四处基准红线描述补上只读哈希证明 |
+| 0.9.6 | [0.9.6.md](release/0.9.6.md) | AI 注意力占用优化(轮 9-10):每轮注入 ×2.1、一次性面 ×1.24-×2.46,百轮累计 ×2.09,运行时无回退 |
 
 ## report/perf/
 
 | 报告 | 内容 |
 |---|---|
 | [2026-09-29-perf-optimization.md](report/perf/2026-09-29-perf-optimization.md) | v0.9.0→0.9.4 八轮性能优化:方法论、逐语句剖析、前后对比表、红线核验 |
+| [2026-09-30-attention-optimization.md](report/perf/2026-09-30-attention-optimization.md) | v0.9.5→0.9.6 注意力占用优化:四注入面 est tok 方法论、轮 9-10、红线核验 |
 
 ## 相关目录(仓库根)
 
-- `benchmark/` — 可复跑的性能基准(含冻结的 v0.9.0 基线副本),用法见其 README。
+- `benchmark/` — 可复跑的性能基准(含冻结的 v0.9.0 运行时基线与 v0.9.5 注意力基线),用法见其 README。
 - `codebase-analyzer/reports/` — 2026-09-29 的代码库深度分析报告与四个 AI 替代蓝图。
