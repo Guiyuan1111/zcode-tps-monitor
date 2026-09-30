@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.6 — 2026-09-30
+
+AI 注意力占用优化(轮 9-10):红线(安全/稳定/兼容)不破前提下,把插件注入模型上下文的文本面压到最低。报告:`note/report/perf/2026-09-30-attention-optimization.md`。
+
+### 性能(注意力/上下文,estTokens 启发式)
+- **每轮注入 ×2.1**(228.1→108.7 est tok):hook 自动维护 `~/.zcode/token-rate.mjs` 短路径副本(与插件脚本逐字节一致,失配自动刷新,失败回退完整路径),注入命令不再携带随版本变长的完整安装路径;指令压缩为三行,五要素守卫(调用过工具才统计/总结前时机/原样引用块/不改写/空输出与不额外调用守卫)全部保留。
+- **一次性面**:session-start 提示只留索引 ×2.46;MCP 工具描述瘦身 ×1.24(inputSchema 不变);SKILL 触发描述只留关键词 ×1.95(机制讲解移入按需加载的正文)。
+- 百轮会话累计 23,205→11,102 est tok(×2.09);运行时六基准无回退(prompt-submit ×1.04、session-start ×1.00)。
+
+### 修复
+- 副本命名 `tps-rate.mjs` 会与脚本 CLI 守卫(按 `process.argv[1]` 后缀 `token-rate.mjs` 判定)失配,导致收尾统计静默无输出——副本定名 `token-rate.mjs` 并在 `lib.mjs` 注释固化该约束。
+
+### 测试与基准
+- 新增 `benchmark/bench-attention.mjs`(四个注入面 est tok 对比+五要素语义断言)与 `baseline-v0.9.5/` 冻结基线;`test/attention.test.mjs` 覆盖副本创建/刷新/回退与配置开关。
+- bench-hooks/bench-mcp 等价校验按「结构逐字节 + 文本语义」口径适配(注入/描述文本是有意精简的优化面本身)。
+
 ## 0.9.5 — 2026-09-30
 
 文档对齐(八轮优化后)。
