@@ -6,8 +6,8 @@
 
 | 形态 | 入口 | 说明 |
 |---|---|---|
-| 本问统计 | `hooks/prompt-submit.mjs` + `scripts/token-rate.mjs` | 每轮注入「本问统计指令」:模型在回复收尾时运行 `token-rate.mjs --turn --current`,把本问即时速率行附在回复末尾;命令行内联 `ZCODE_SESSION_ID`(多窗口锁定本会话),`--current` 守卫保证绝不显示上一轮。`{"tokenRateLine": false}` 可整体关闭 |
-| 会话提示 | `hooks/session-start.mjs` | 会话启动/恢复/压缩时记录会话 ID,并注入使用提示(收尾自测机制说明) |
+| 本问统计 | `hooks/prompt-submit.mjs` + `scripts/token-rate.mjs` | 每轮注入「本问统计指令」:模型在回复收尾时运行 `token-rate.mjs --turn --current`,把本问即时速率行附在回复末尾;命令行内联 `ZCODE_SESSION_ID`(多窗口锁定本会话),`--current` 守卫保证绝不显示上一轮。hook 首次运行会在 `~/.zcode/` 维护一份与插件脚本逐字节一致的短路径副本 `token-rate.mjs`(文件名不可改——脚本 CLI 守卫按它判定),使注入命令短且不随安装路径/版本变长;复制失败自动回退完整路径。`{"tokenRateLine": false}` 可整体关闭 |
+| 会话提示 | `hooks/session-start.mjs` | 会话启动/恢复/压缩时记录会话 ID,并注入一行使用索引(命令入口+关闭开关;机制细节由每轮注入的指令携带) |
 | 自检 | `/tps-doctor`(`scripts/doctor.mjs`) | 检查 Node 版本、数据库与表结构、状态/配置文件;`--json` 可编程消费 |
 | 斜杠命令 | `/zcode-tps-monitor:tps` | 即时快照;`/zcode-tps-monitor:tps 10` 采样观察 10 秒 |
 | 技能 | `zcode-tps-monitor` | 用户询问速率/TPS 相关问题时自动触发 |
