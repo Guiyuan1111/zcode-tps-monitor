@@ -24,14 +24,12 @@ const SERVER_INFO = { name: "zcode-tps-monitor", version: VERSION };
 const TOOLS = [
   {
     name: "tps_snapshot",
-    description:
-      "获取一次 TPS 吞吐快照:当前 TPS、延迟 p50/p95/p99、错误率,以及本机 CPU/内存使用。无需参数。",
+    description: "TPS 快照:吞吐、延迟 p50/p95/p99、错误率、本机 CPU/内存。无需参数。",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "tps_watch",
-    description:
-      "按秒采样观察 TPS 一段时间,返回平均/最小/最大与延迟、错误率统计。seconds: 2-30,默认 5。",
+    description: "按秒采样 TPS 并返回统计。seconds:2-30,默认 5。",
     inputSchema: {
       type: "object",
       properties: {
