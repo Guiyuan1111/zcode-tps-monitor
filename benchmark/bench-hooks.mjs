@@ -3,7 +3,9 @@
 // 钩子耗时直接吃对话交互延迟,逐次 spawn 计时(交错执行消除漂移)。
 // 环境隔离:HOME/USERPROFILE/TPS_MONITOR_STATE_FILE 全部重定向到 benchmark/TEMP,
 // 绝不读写真实 ~/.zcode;stop 钩子的 DB 指向夹具库。
-// 红线校验:两版本 stdout 逐字节一致。
+// 红线校验:stop 逐字节一致;prompt-submit/session-start 是注意力优化面
+// (注入文本自 v0.9.6 起有意精简),改为结构等价——严格 JSON、hookEventName
+// 一致、注入非空;注入文本的语义守卫(命令/引用块/空输出守卫)在 bench-attention。
 // 结果行:##RESULT## {json}
 //
 //   node benchmark/bench-hooks.mjs [small|medium|large]   BENCH_RUNS=15
@@ -80,7 +82,16 @@ for (const [name, { script, env, stdin }] of Object.entries(SCENARIOS)) {
   }
   assert.equal(outs.baseline.size, 1, `${name}: 基线输出不稳定`);
   assert.equal(outs.current.size, 1, `${name}: 当前输出不稳定`);
-  assert.equal([...outs.baseline][0], [...outs.current][0], `${name}: 两版本输出不一致`);
+  if (name === "stop") {
+    assert.equal([...outs.baseline][0], [...outs.current][0], `${name}: 两版本输出不一致`);
+  } else {
+    // 注入面:文本有意精简(注意力优化),校验结构等价 + 注入非空
+    const parse = (s) => JSON.parse(s).hookSpecificOutput;
+    const b = parse([...outs.baseline][0]);
+    const c = parse([...outs.current][0]);
+    assert.equal(b.hookEventName, c.hookEventName, `${name}: hookEventName 不一致`);
+    assert.ok(c.additionalContext.length > 0, `${name}: 注入不应为空`);
+  }
   const med = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
   const b = med(samples.baseline), c = med(samples.current);
   result.baseline[name] = +b.toFixed(2);

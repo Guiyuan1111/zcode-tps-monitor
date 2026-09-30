@@ -3,8 +3,8 @@
 // 场景(两个变体各跑一次,交错):
 //   chunked  1×initialize + N×tools/list,分多次写入(每块 25 帧)——典型客户端节奏
 //   burst    200 帧一次写入——压测单块多帧的解析循环
-// 校验:响应数量相等;另跑一轮 initialize+tools/list+ping 探测,
-// 归一化 serverInfo 版本号后逐字节比对(序列化改造不得改变协议应答)。
+// 校验:响应数量相等;另跑一轮 initialize+tools/list+ping 探测,归一化
+// serverInfo 版本号与描述文本(注意力优化面)后逐字节比对——序列化结构不得改变。
 // 结果行:##RESULT## {json}
 //
 //   node benchmark/bench-mcp.mjs    BENCH_MCP_N=300
@@ -97,7 +97,13 @@ async function probeOutputs(script) {
     const poll = setInterval(() => {
       if ((out.match(/"jsonrpc":"2\.0"/g) || []).length >= 3) {
         clearInterval(poll); clearTimeout(timer); child.kill();
-        resolve(out.replace(/"version":"0\.\d+\.\d+"/g, '"version":"V"'));
+        resolve(
+          out.replace(/"version":"0\.\d+\.\d+"/g, '"version":"V"')
+            // 工具描述文本是注意力优化面(v0.9.6 起有意精简):描述与随之变化的
+            // 帧长度规范化后比对,序列化结构/帧序/字段序仍须逐字节一致
+            .replace(/"description":"[^"]*"/g, '"description":"D"')
+            .replace(/Content-Length: \d+/g, "Content-Length: L")
+        );
       }
     }, 5);
     child.stdin.write(Buffer.concat([
