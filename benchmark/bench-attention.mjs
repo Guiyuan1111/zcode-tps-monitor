@@ -5,6 +5,8 @@
 //   session   SessionStart 会话提示(每会话一次)
 //   tools     MCP tools/list 的 tools 定义(进系统提示,每会话一次)
 //   skill     SKILL.md frontmatter description(进系统提示,每会话一次)
+//   commands  斜杠命令文件全文(tps/tps-doctor;用户调用时展开,按需面,不计入百轮外推)
+//   skillBody SKILL.md 正文(技能触发时加载,按需面,不计入百轮外推)
 // token 为零依赖估算:CJK 字符 1/字 + 其余字符 /3.5(路径/标点密集,偏保守),
 // 同时报原始字符数;估算只用于横向对比(同口径),不代表任何分词器精确值。
 // 红线校验(两变体都必须通过,否则基准失败):
@@ -106,6 +108,24 @@ function skillDescription(variantDir) {
   return desc;
 }
 
+// 按需面:斜杠命令文件全文(用户调用时展开进上下文)
+function commandFilesText(variantDir) {
+  const tps = fs.readFileSync(path.join(variantDir, "commands", "tps.md"), "utf8");
+  const doctor = fs.readFileSync(path.join(variantDir, "commands", "tps-doctor.md"), "utf8");
+  assert.ok(tps.includes("$ARGUMENTS") && doctor.includes("$ARGUMENTS"), "命令文件缺 $ARGUMENTS 占位");
+  return tps + doctor;
+}
+
+// 按需面:SKILL.md 正文(技能触发时加载;frontmatter 之后的部分)
+function skillBodyText(variantDir) {
+  const md = fs.readFileSync(path.join(variantDir, "skills", "zcode-tps-monitor", "SKILL.md"), "utf8");
+  const m = /^---\r?\n[^]*?\r?\n---\r?\n/.exec(md);
+  assert.ok(m, "SKILL.md 缺 frontmatter");
+  const body = md.slice(m[0].length);
+  assert.match(body, /【本轮统计】/, "SKILL 正文缺【本轮统计】标签引用(0.9.7 对齐纪律)");
+  return body;
+}
+
 // --- 零依赖 token 估算:CJK 1/字,其余 /3.5(保守,路径密集场景) ---
 function estTokens(text) {
   let cjk = 0, other = 0;
@@ -121,6 +141,8 @@ const SURFACES = {
   session: (d) => sessionStartText(d),
   tools: (d) => toolsListBytes(d),
   skill: (d) => skillDescription(d),
+  commands: (d) => commandFilesText(d),
+  skillBody: (d) => skillBodyText(d),
 };
 
 const result = { bench: "attention", baseline: {}, current: {}, ratio: {} };
@@ -131,7 +153,8 @@ for (const [name, collect] of Object.entries(SURFACES)) {
   result.current[name] = { chars: c.length, estTokens: estTokens(c) };
   result.ratio[name] = +(result.baseline[name].estTokens / result.current[name].estTokens).toFixed(2);
 }
-// 100 轮累计(每轮注入 ×100 + 一次性面)
+// 100 轮累计(常驻面:每轮注入 ×100 + 三个一次性面;按需面 commands/skillBody
+// 只在用户调用命令/触发技能时展开,不随轮数增长,不参与外推)
 result.hundredTurns = {
   baseline: +(result.baseline.perTurn.estTokens * 100 + result.baseline.session.estTokens + result.baseline.tools.estTokens + result.baseline.skill.estTokens).toFixed(0),
   current: +(result.current.perTurn.estTokens * 100 + result.current.session.estTokens + result.current.tools.estTokens + result.current.skill.estTokens).toFixed(0),
@@ -141,6 +164,7 @@ result.hundredTurns.ratio = +(result.hundredTurns.baseline / result.hundredTurns
 console.log(
   `[attention] perTurn ${result.baseline.perTurn.estTokens}→${result.current.perTurn.estTokens} tok(×${result.ratio.perTurn})` +
     `  session ×${result.ratio.session}  tools ×${result.ratio.tools}  skill ×${result.ratio.skill}` +
+    `  [按需] commands ×${result.ratio.commands}  skillBody ×${result.ratio.skillBody}` +
     `  100轮累计 ${result.hundredTurns.baseline}→${result.hundredTurns.current}(×${result.hundredTurns.ratio})`
 );
 console.log("##RESULT## " + JSON.stringify(result));
