@@ -29,7 +29,7 @@ const TEMP = path.join(ROOT, "benchmark", "TEMP");
 fs.mkdirSync(TEMP, { recursive: true });
 
 const VARIANTS = {
-  baseline: path.join(ROOT, "benchmark", "baseline-v0.9.5"),
+  baseline: path.join(ROOT, "benchmark", "baseline-v0.9.7"),
   current: path.join(ROOT, "plugins", "zcode-tps-monitor"),
 };
 
