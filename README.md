@@ -92,7 +92,7 @@
    │
    ▼
 UserPromptSubmit 钩子
-   │  记录提问时刻到状态文件,下达「本问统计指令」
+   │  记录提问时刻到状态文件,下达「本轮统计」指令
    │  (指令命令行内联本会话 ID,多窗口并发时锁定本会话)
    ▼
 模型回复(工具调用 × N 段,每段完成即实时写入 usage 库)
@@ -106,8 +106,8 @@ UserPromptSubmit 钩子
 把统计行放入 Markdown 引用块,贴在回复最末尾
 ```
 
-- **SessionStart 钩子**:会话启动/恢复/压缩时记录当前会话 ID 并注入使用提示
-- **UserPromptSubmit 钩子**:每轮触发一次,仅写状态文件并注入一条「本问统计指令」(无数据库读取,开销可忽略);指令命令行内联 `ZCODE_SESSION_ID`,多开窗口交替提问时统计锁定本会话
+- **SessionStart 钩子**:会话启动/恢复/压缩时记录当前会话 ID,并注入一行使用索引(命令入口与关闭开关;机制细节由每轮注入的指令携带)
+- **UserPromptSubmit 钩子**:每轮触发一次,写状态文件、维护 `~/.zcode/token-rate.mjs` 短路径副本(首次/内容变化时写入,使注入命令短且不随安装路径变长)并注入一条「本轮统计」指令(无数据库读取,开销可忽略);指令命令行内联 `ZCODE_SESSION_ID`,多开窗口交替提问时统计锁定本会话
 - **收尾自测(`--turn --current`)**:本问的各段请求在回答过程中已实时入库,收尾时统计即为完整的本问数据;`--current` 守卫把状态文件里的提问时刻与本问数据比对,本问尚无入库数据(纯问答轮)时输出为空——**结构上杜绝了"显示上一轮"**
 - **Stop 钩子(兼容保留)**:`hooks/stop.mjs` 会在回复刚结束时经 `systemMessage` 直接显示本问速率,当前客户端版本暂不触发该事件,不影响上述机制;未来客户端支持后自动增强
 - Token 速率与业务 TPS 相互独立:前者始终来自 ZCode 真实数据,后者取决于是否配置 `metrics_url`
@@ -143,11 +143,12 @@ A:演示数据只影响"业务 TPS"部分(Token 速率始终真实);不配置 `m
 ```bash
 node --test                                  # 单元测试(临时库夹具,不读真实数据)
 node benchmark/fixture-gen.mjs               # 生成性能基准夹具(与真实 usage 库同构)
-node benchmark/run-all.mjs                   # 全量性能基准(优化前冻结副本 vs 当前代码)
+node benchmark/run-all.mjs                   # 全量运行时基准(六项,v0.9.0 冻结基线 vs 当前代码)
+node benchmark/bench-attention.mjs           # AI 上下文占用基准(四注入面,v0.9.5 冻结基线)
 BENCH_SIZE=large node benchmark/run-all.mjs  # 100k 行大夹具
 ```
 
-- 性能基准的方法论与前后对比见 [`benchmark/README.md`](benchmark/README.md) 与 [`note/report/perf/`](note/report/perf/) 的对比报告;基准内建双重红线断言——行为等价(输出深度相等/逐字节一致,优化不得改变任何输出)与只读证明(全程跑完后库文件 SHA-256 不变、无 WAL 旁文件)。
+- 性能基准的方法论与前后对比见 [`benchmark/README.md`](benchmark/README.md) 与 [`note/report/perf/`](note/report/perf/) 的对比报告;基准内建双重红线断言——**行为等价**(运行时输出深度相等/逐字节一致;注入与描述等文本面自 0.9.6 起为「结构逐字节 + 文本语义」口径:JSON 结构与序列化顺序不变、收尾自测五要素守卫齐全)与**只读证明**(全程跑完后库文件 SHA-256 不变、无 WAL 旁文件)。
 - 每个版本的改动要点归档在 [`note/release/`](note/release/),笔记索引见 [`note/README.md`](note/README.md)。
 
 ## License
