@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.8 — 2026-09-30
+
+AI 注意力占用优化第二轮(轮 11-13):常驻面继续压缩,新增按需面测量与压缩。报告:`note/report/perf/2026-09-30-attention-optimization-2.md`。
+
+### 性能(注意力/上下文,estTokens 启发式,基线 v0.9.7)
+- **轮 11 每轮注入 ×1.18**(108.7→91.9):注入命令 `ZCODE_SESSION_ID="…" node ~/.zcode/token-rate.mjs --turn --current` → `ZSID="…" node ~/.zcode/tr.mjs -c`——`ZSID` 为脚本新增等价短环境别名,`-c` 为 `--turn --current` 组合短旗标,短路径副本改名 `~/.zcode/tr.mjs`(升级时自动清理旧名副本);指令措辞压缩,五要素守卫语义不变。
+- **轮 12 一次性面**:session-start 提示 60.4→50.1(×1.21);MCP 工具描述 124.1→113.1(×1.10,`seconds` 参数 description 键保留、值缩短)。
+- **轮 13 按需面**(新增测量):斜杠命令文件 618.6→488.0(×1.27);SKILL 正文 433.3→414.7(×1.04)。frontmatter 触发描述不动(触发可靠性优先)。
+- 百轮常驻面累计 11,102→9,401 est tok(×1.18)。
+
+### 兼容性
+- 长旗标 `--turn --current`、旧环境名 `ZCODE_SESSION_ID`/`CLAUDE_SESSION_ID` 全部保留;CLI 守卫从「argv[1] 以 token-rate.mjs 结尾」改为基名白名单(token-rate.mjs / tr.mjs),与路径风格无关。
+
+### 测试与基准
+- `test/attention.test.mjs` 同步新命令形态并新增旧名副本清理断言;bench-attention 基线切换至 `baseline-v0.9.7/` 冻结副本并新增 commands/skillBody 两个按需面。
+- 运行时回归门 `run-all` 六基准全绿无回退(prompt-submit ×0.996 噪声带内)。
+
 ## 0.9.7 — 2026-09-30
 
 文档对齐(注意力优化后)。

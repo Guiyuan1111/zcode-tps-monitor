@@ -18,7 +18,7 @@ description: 当用户询问 token 速率、生成速度、tok/s、模型输出�
    node <插件目录>/scripts/token-rate.mjs --turn --current # 最新一问(本问)即时统计
    node <插件目录>/scripts/token-rate.mjs --json           # JSON
    ```
-   可设 `ZCODE_SESSION_ID` 只统计当前会话(钩子已自动设置)。
+   可设 `ZCODE_SESSION_ID`(或 `ZSID`)只统计当前会话(每轮注入命令已自动内联 `ZSID`)。
 2. 业务 TPS:MCP 工具 `tps_snapshot`/`tps_watch`,或 `node <插件目录>/scripts/collect.mjs [--watch N]`。
 
 ## 展示规范

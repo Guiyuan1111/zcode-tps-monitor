@@ -22,6 +22,7 @@ note/
 | 0.9.5 | [0.9.5.md](release/0.9.5.md) | 文档对齐:四处基准红线描述补上只读哈希证明 |
 | 0.9.6 | [0.9.6.md](release/0.9.6.md) | AI 注意力占用优化(轮 9-10):每轮注入 ×2.1、一次性面 ×1.24-×2.46,百轮累计 ×2.09,运行时无回退 |
 | 0.9.7 | [0.9.7.md](release/0.9.7.md) | 文档对齐:SKILL 注入标签失配修正,README 指令名统一与基准口径更正 |
+| 0.9.8 | [0.9.8.md](release/0.9.8.md) | AI 注意力优化第二轮(轮 11-13):每轮注入 ×1.18、一次性面 ×1.10-×1.21、按需面 ×1.04-×1.27,百轮累计 ×1.18 |
 
 ## report/perf/
 
@@ -29,8 +30,9 @@ note/
 |---|---|
 | [2026-09-29-perf-optimization.md](report/perf/2026-09-29-perf-optimization.md) | v0.9.0→0.9.4 八轮性能优化:方法论、逐语句剖析、前后对比表、红线核验 |
 | [2026-09-30-attention-optimization.md](report/perf/2026-09-30-attention-optimization.md) | v0.9.5→0.9.6 注意力占用优化:四注入面 est tok 方法论、轮 9-10、红线核验 |
+| [2026-09-30-attention-optimization-2.md](report/perf/2026-09-30-attention-optimization-2.md) | v0.9.7→0.9.8 注意力优化第二轮:常驻四面+按需两面、轮 11-13、红线核验 |
 
 ## 相关目录(仓库根)
 
-- `benchmark/` — 可复跑的性能基准(含冻结的 v0.9.0 运行时基线与 v0.9.5 注意力基线),用法见其 README。
+- `benchmark/` — 可复跑的性能基准(含冻结的 v0.9.0 运行时基线与 v0.9.5/v0.9.7 注意力基线),用法见其 README。
 - `codebase-analyzer/reports/` — 2026-09-29 的代码库深度分析报告与四个 AI 替代蓝图。
