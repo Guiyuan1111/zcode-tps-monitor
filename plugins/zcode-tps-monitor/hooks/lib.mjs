@@ -32,13 +32,13 @@ export function readConfig() {
 
 // AI 收尾自测命令用的短路径副本:注入文本里的完整插件安装路径(反斜杠密集、
 // 分词很差)占指令近半 token;把零依赖独立的 token-rate.mjs 复制到
-// ~/.zcode/token-rate.mjs 后,命令缩短到 ~40 字符。副本文件名必须以
-// token-rate.mjs 结尾——脚本的 CLI 守卫按 process.argv[1] 后缀判定是否执行命令行。
-// 每次注入前校验内容,不一致(插件升级/换缓存版本)即刷新;
-// 任何失败返回 null,调用方回退完整路径。
+// ~/.zcode/tr.mjs 后,命令缩短到 ~30 字符。副本文件名必须为 tr.mjs——脚本的
+// CLI 守卫按 process.argv[1] 基名白名单判定(token-rate.mjs / tr.mjs),改名即
+// 与守卫失配、静默无输出。每次注入前校验内容,不一致(插件升级/换缓存版本)即
+// 刷新并顺手清理 0.9.7 及更早版本的旧名副本;任何失败返回 null,调用方回退完整路径。
 export function ensureRateShortcut(rateScriptPath) {
   try {
-    const dest = path.join(os.homedir(), ".zcode", "token-rate.mjs");
+    const dest = path.join(os.homedir(), ".zcode", "tr.mjs");
     const src = fs.readFileSync(rateScriptPath);
     let cur = null;
     try {
@@ -47,6 +47,9 @@ export function ensureRateShortcut(rateScriptPath) {
     if (!cur || !cur.equals(src)) {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.writeFileSync(dest, src);
+      try {
+        fs.unlinkSync(path.join(os.homedir(), ".zcode", "token-rate.mjs")); // 旧名副本升级清理
+      } catch {}
     }
     return dest;
   } catch {

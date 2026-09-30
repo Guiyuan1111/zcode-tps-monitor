@@ -6,8 +6,9 @@
 //   node token-rate.mjs --turn --current
 //                                  同上,但本问尚无入库数据时输出为空(--current 守卫,
 //                                  绝不把上一轮数据当作本问返回)
+//   node token-rate.mjs -c         = --turn --current 组合短旗标(每轮注入命令用)
 //   node token-rate.mjs --json     JSON 输出
-//   ZCODE_SESSION_ID=xxx node ...  只统计指定会话
+//   ZCODE_SESSION_ID=xxx node ...  只统计指定会话(ZSID 为等价短别名)
 //   ZCODE_USAGE_DB=/path/db.sqlite 指定数据库路径(默认按用户主目录解析)
 //   TPS_MONITOR_STATE_FILE=/path   指定钩子状态文件(默认 ~/.zcode/tps-monitor.last-session.json)
 // 只读打开 WAL 数据库,不影响运行中的客户端。
@@ -318,11 +319,16 @@ function formatTurnLine(r) {
 }
 
 // --- CLI ---
-if (process.argv[1] && process.argv[1].endsWith("token-rate.mjs")) {
+// 守卫:仅当本文件作为入口执行时才走命令行(被 import 时不执行)。按 argv[1] 基名
+// 白名单判定,与路径风格/大小写无关;短路径副本(hooks/lib.mjs)以 tr.mjs 命名,
+// 两个入口名都在白名单内——改名必须与 lib.mjs 同步,否则副本运行静默无输出。
+const CLI_ENTRY_NAMES = new Set(["token-rate.mjs", "tr.mjs"]);
+if (CLI_ENTRY_NAMES.has(process.argv[1] ? path.basename(process.argv[1]) : "")) {
   const json = process.argv.includes("--json");
-  const turnOnly = process.argv.includes("--turn");
-  const current = process.argv.includes("--current");
-  const sid = process.env.ZCODE_SESSION_ID || process.env.CLAUDE_SESSION_ID || null;
+  const quick = process.argv.includes("-c"); // -c = --turn --current 组合(注入短命令用)
+  const turnOnly = process.argv.includes("--turn") || quick;
+  const current = process.argv.includes("--current") || quick;
+  const sid = process.env.ZCODE_SESSION_ID || process.env.CLAUDE_SESSION_ID || process.env.ZSID || null;
   if (turnOnly) {
     const r = queryTurn(sid, { current });
     if (json) console.log(JSON.stringify(r, null, 2));

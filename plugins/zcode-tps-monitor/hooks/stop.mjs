@@ -35,6 +35,7 @@ async function main() {
     payload.session_id ||
     process.env.ZCODE_SESSION_ID ||
     process.env.CLAUDE_SESSION_ID ||
+    process.env.ZSID ||
     "";
   writeSessionState(sid, "stop");
 

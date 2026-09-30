@@ -9,8 +9,8 @@
 // 同时报原始字符数;估算只用于横向对比(同口径),不代表任何分词器精确值。
 // 红线校验(两变体都必须通过,否则基准失败):
 //   - 两个钩子输出严格 JSON 且可解析
-//   - prompt-submit 注入必须包含:以 --turn --current 结尾的脚本命令、
-//     Markdown 引用块标记、以及"无输出/未调用工具不显示"守卫语义
+//   - prompt-submit 注入必须包含:本问统计脚本命令(基线长旗标 --turn --current /
+//     0.9.8 起组合短旗标 -c)、Markdown 引用块标记、以及"无输出/未调用工具不显示"守卫语义
 //   - MCP 必须列出 tps_snapshot/tps_watch 两个工具且带 inputSchema
 //   - SKILL description 非空且含触发关键词(tok/s 与 TPS)
 // 结果行:##RESULT## {json}
@@ -57,7 +57,8 @@ function promptSubmitText(variantDir) {
   const j = runHook(variantDir, "prompt-submit.mjs");
   const ctx = j.hookSpecificOutput?.additionalContext ?? "";
   // 语义守卫:命令、引用块、空输出守卫三要素缺一不可
-  assert.match(ctx, /--turn --current/, "注入缺少 --turn --current 命令");
+  // 命令形态两代并存:v0.9.7 基线为长旗标,0.9.8 起为 -c 组合短旗标(语义同 --turn --current)
+  assert.match(ctx, /node ~\/\.zcode\/(token-rate\.mjs --turn --current|tr\.mjs -c)/, "注入缺少本问统计命令");
   assert.match(ctx, />/, "注入缺少 Markdown 引用块标记");
   assert.match(ctx, /(不显示|不要显示)/, "注入缺少空输出守卫");
   assert.match(ctx, /(没有调用过|未调用过|为此(额外)?调用)/, "注入缺少未调用工具守卫");
